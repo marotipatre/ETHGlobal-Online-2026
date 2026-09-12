@@ -1,7 +1,7 @@
 
-## 🎯 What is Universal App Kit?
+## 🎯 What is ArcFlow?
 
-Universal App Kit is a **cross-chain intent forwarding system** that solves the biggest friction point in multi-chain applications: **network switching and bridging**.
+ArcFlow is a **cross-chain intent forwarding system** that solves the biggest friction point in multi-chain applications: **network switching and bridging**.
 
 ### The Problem
 - Users must switch networks in their wallet
@@ -114,7 +114,7 @@ SOURCE CHAIN                    OFF-CHAIN                  ARC CHAIN
 1. **Clone the repository:**
 ```bash
 git clone <repository-url>
-cd universal-kit
+cd arcflow
 ```
 
 2. **Install frontend dependencies:**
@@ -288,7 +288,7 @@ Total Time: T0 → T6 = ~10-30 seconds
 ### Project Structure
 
 ```
-universal-kit/
+arcflow/
 ├── src/                          # Next.js frontend
 │   ├── app/                      # Next.js app router
 │   │   ├── page.tsx              # Homepage

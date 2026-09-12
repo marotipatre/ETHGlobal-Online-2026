@@ -2,9 +2,9 @@
 
 ## Objective
 
-Use the UI/UX of `Universal-Algorand-Kit-main` with the complete, unchanged functionality and backend of `Universal-Kit-Arc-main`.
+Use the UI/UX of `Universal-Algorand-Kit-main` with the complete, unchanged functionality and backend of `arcflow`.
 
-The final application remains `Universal-Kit-Arc-main`.
+The final application remains `arcflow`.
 
 This is a presentation migration only. The Arc application flow is the source of truth and must not be redesigned, replaced, or redirected to Algorand functionality.
 
@@ -27,7 +27,7 @@ This is a presentation migration only. The Arc application flow is the source of
 
 ### Target project
 
-`Universal-Kit-Arc-main`
+`arcflow`
 
 This project keeps:
 
@@ -90,7 +90,7 @@ Use the visual direction from:
 
 Apply the equivalent styles to:
 
-- `Universal-Kit-Arc-main/src/app/globals.css`
+- `arcflow/src/app/globals.css`
 - Existing Tailwind configuration and utility classes
 
 Preserve the target project's CSS loading and Next.js conventions. Do not copy Vite-specific imports or root setup.
@@ -235,7 +235,7 @@ Do not change:
 
 Remove files only after searching imports and confirming they are not needed by the build, tests, scripts, or backend.
 
-### Candidates for removal in `Universal-Kit-Arc-main`
+### Candidates for removal in `arcflow`
 
 These are candidates only, not automatic deletions:
 
@@ -308,7 +308,7 @@ Check at desktop and mobile widths:
 
 The merge is complete when:
 
-1. `Universal-Kit-Arc-main` has the RemitStar-style UI/UX.
+1. `arcflow` has the RemitStar-style UI/UX.
 2. Counter and Todo behavior is unchanged and functional.
 3. The Arc relayer and backend are unchanged and functional.
 4. The project still runs with its original Next.js, wagmi, RainbowKit, and Arc configuration.
