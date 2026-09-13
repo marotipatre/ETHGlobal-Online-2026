@@ -30,7 +30,7 @@ export function CctpBridgePanel() {
           <p className="text-sm font-bold text-white">Bridge USDC to Arc via CCTP</p>
         </div>
         <p className="mt-1 text-xs text-[var(--muted)]">
-          Burns real USDC on Base Sepolia using Circle's Cross-Chain Transfer Protocol. Circle's attestation service mints it natively on Arc — no wrapped tokens.
+          Burns real USDC on Base Sepolia using Circle&apos;s Cross-Chain Transfer Protocol. Circle&apos;s attestation service mints it natively on Arc — no wrapped tokens.
         </p>
       </div>
 

@@ -99,7 +99,7 @@ export default function SDKPage() {
       <p className="text-xs font-bold tracking-[.14em] text-[var(--primary)]">CIRCLE DEVELOPER STACK</p>
       <h1 className="mt-4 text-5xl font-bold text-white md:text-6xl">Built with Circle.</h1>
       <p className="mt-5 max-w-2xl text-lg text-[var(--muted)]">
-        ArcFlow uses Arc, USDC, CCTP, Paymaster, and the Agent Stack — Circle's full developer suite for stablecoin-native DeFi.
+        ArcFlow uses Arc, USDC, CCTP, Paymaster, and the Agent Stack — Circle&apos;s full developer suite for stablecoin-native DeFi.
       </p>
 
       {/* Circle stack cards */}

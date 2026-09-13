@@ -24,7 +24,7 @@ export default function ArchitecturePage() {
       <p className="text-xs font-bold tracking-[.14em] text-[var(--primary)]">SYSTEM ARCHITECTURE</p>
       <h1 className="mt-4 text-5xl font-bold text-white md:text-6xl">How ArcFlow works.</h1>
       <p className="mt-5 max-w-2xl text-lg text-[var(--muted)]">
-        A cross-chain intent pipeline built on Arc — Circle's EVM-compatible L1. Source-chain wallets control Arc-native USDC without bridging.
+        A cross-chain intent pipeline built on Arc — Circle&apos;s EVM-compatible L1. Source-chain wallets control Arc-native USDC without bridging.
       </p>
 
       {/* Main flow diagram */}

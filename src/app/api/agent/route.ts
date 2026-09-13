@@ -11,10 +11,6 @@ const VAULT_ABI = parseAbi([
   "function harvestFor(address user)",
 ]);
 
-const GATEWAY_ABI = parseAbi([
-  "function forwardIntentWithData(address target, bytes data)",
-]);
-
 const EXECUTOR_ABI = parseAbi([
   "function executeWithData(address user, address target, bytes data)",
   "function authorizedRelayers(address) view returns (bool)",
