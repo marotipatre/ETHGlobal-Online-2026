@@ -2,6 +2,40 @@
 
 These changes update the Vercel API and Railway worker. No contract deployment is required.
 
+## Recover the September 14 stuck deposit
+
+Source transaction `0x87374f13b56d987a8c8fe66739bd6ff45c4ae8ffe2671e99a6abd5baf8d5e431` emitted the configured Base Sepolia gateway event through a wallet/router. The API previously rejected it because the top-level transaction recipient was not the gateway. The updated API validates the successful receipt and the gateway's event emitter, allowing this call path.
+
+This deposit already succeeded on Arc in `0xdcb8d208496e0f02f0240c2d8f7dc06ca7d656ffa0b4b6d384c4fda7591a4402`. A later duplicate attempt, `0xb3cc78f6fff337b625cd445df0e135ef8270fb7ca377be6d2cbf0f7120c78894`, emitted an unsuccessful execution. Local history contains the first success while the hosted history contains the later failure. Do not resubmit the deposit.
+
+The recovery command verifies the source gateway event, the destination executor address, matching user/target/calldata, and both the successful executor and vault deposit events. It never constructs a wallet or broadcasts a transaction. It only updates the one history entry when explicitly run with `--apply`, and first backs up the existing Redis history. This repairs status reporting; it does not undo earlier duplicate executions.
+
+1. Stop the Railway relayer deployment before recovery, and keep the local relayer stopped. Use `npm run dev:ui` for local UI work; `npm run dev` currently starts a local relayer too.
+2. In your local **private** `web3-hardhat-intent/.env`, set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to the same existing database used by Railway/Vercel. Do not paste the token into chat or commit it. Keep the existing contract addresses. No private key is needed by the recovery command.
+3. From the repository root, preview the verified record:
+
+   ```bash
+   npm --prefix web3-hardhat-intent run reconcile:deposit -- 84532 0x87374f13b56d987a8c8fe66739bd6ff45c4ae8ffe2671e99a6abd5baf8d5e431 0xdcb8d208496e0f02f0240c2d8f7dc06ca7d656ffa0b4b6d384c4fda7591a4402
+   ```
+
+4. With both relayers stopped, apply that record:
+
+   ```bash
+   npm --prefix web3-hardhat-intent run reconcile:deposit -- 84532 0x87374f13b56d987a8c8fe66739bd6ff45c4ae8ffe2671e99a6abd5baf8d5e431 0xdcb8d208496e0f02f0240c2d8f7dc06ca7d656ffa0b4b6d384c4fda7591a4402 --apply --relayer-stopped
+   ```
+
+5. Commit and push the API fix and recovery tooling (leave `public/intent-history.json` and `.env` out):
+
+   ```bash
+   git add RELAYER-DEPLOYMENT.md src/app/api/intents/route.ts src/lib/intentReceipt.ts src/hooks/IntentFlowContext.tsx src/components/IntentProgress.tsx web3-hardhat-intent/package.json web3-hardhat-intent/relayer/relayer.test.ts web3-hardhat-intent/scripts/reconcile-deposit.ts
+   git commit -m "Accept wallet-routed intents and add verified deposit status recovery"
+   git push origin main
+   ```
+
+6. Deploy the new commit to Vercel and restart only Railway, which reloads the repaired shared history. Refresh `/api/intents`: this source hash should show `completed` with execution hash `0xdcb8d208496e0f02f0240c2d8f7dc06ca7d656ffa0b4b6d384c4fda7591a4402`. Then refresh the vault page; the completed history record advances the progress panel.
+
+The other old failed entries need their own receipt verification if you want their history reconciled; this command changes only the specified deposit.
+
 ## What changed
 
 - Both services use the same Upstash command format and read legacy double-encoded JSON.

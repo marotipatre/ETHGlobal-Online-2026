@@ -26,6 +26,7 @@ export function IntentProgress({ phase, intent, relayerOnline, error }: { phase:
       </div>
       {phase === "relayer_pending" && !relayerOnline && <p className="mt-4 text-sm text-yellow-200">Source transaction confirmed. The relayer is offline or its heartbeat is unavailable, so Arc execution has not been confirmed. Start the configured relayer and keep this page open.</p>}
       {phase === "failed" && <p className="mt-4 flex items-center gap-2 text-sm text-[var(--danger)]"><XCircle className="size-4" />{error || intent?.error || "The intent failed. Inspect its transaction before retrying."}</p>}
+      {error && (phase === "relayer_pending" || phase === "pending" || phase === "detected" || phase === "executing") && <p className="mt-4 text-sm text-yellow-200">{error}</p>}
       {phase === "completed" && <p className="mt-4 text-sm text-[var(--success)]">Arc execution confirmed. The destination state will refresh from Arc.</p>}
       {intent && <div className="mt-4 flex flex-wrap gap-4 text-xs font-mono text-[var(--muted)]">{sourceUrl && <a className="flex items-center gap-1 hover:text-white" href={`${sourceUrl}/tx/${intent.txHash}`} target="_blank" rel="noreferrer">Source transaction <ExternalLink className="size-3" /></a>}{intent.executionHash && <a className="flex items-center gap-1 hover:text-white" href={`${arcTestnet.blockExplorers.default.url}/tx/${intent.executionHash}`} target="_blank" rel="noreferrer">Arc execution <ExternalLink className="size-3" /></a>}</div>}
     </div>

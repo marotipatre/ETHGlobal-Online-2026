@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createPublicClient, decodeEventLog, http } from "viem";
+import { createPublicClient, http } from "viem";
 import { getSourceNetwork } from "@/config/sourceChains";
-import { ARC_GATEWAY_ABI } from "@/lib/contracts";
+import { isConfirmedGatewayIntent } from "@/lib/intentReceipt";
 import { decodeStoredJson, redisConfigured, redisGet, redisSave } from "../../../../web3-hardhat-intent/relayer/redis";
 
 export const dynamic = "force-dynamic";
@@ -31,13 +31,7 @@ export async function POST(request: Request) {
   try {
     const client = createPublicClient({ chain: source.chain, transport: http(source.rpcUrl) });
     const receipt = await client.getTransactionReceipt({ hash: txHash as `0x${string}` });
-    const matchesGateway = receipt.status === "success" && receipt.to?.toLowerCase() === source.gateway.toLowerCase();
-    const hasIntentEvent = receipt.logs.some((log) => {
-      if (log.address.toLowerCase() !== source.gateway!.toLowerCase()) return false;
-      try { return ["IntentForwarded", "IntentForwardedWithData"].includes(decodeEventLog({ abi: ARC_GATEWAY_ABI, data: log.data, topics: log.topics }).eventName); }
-      catch { return false; }
-    });
-    if (!matchesGateway || !hasIntentEvent) return Response.json({ error: "Transaction did not emit a configured gateway intent" }, { status: 400 });
+    if (!isConfirmedGatewayIntent(receipt, source.gateway)) return Response.json({ error: "Transaction did not emit a configured gateway intent" }, { status: 400 });
   } catch { return Response.json({ error: "Source transaction is not confirmed yet" }, { status: 409 }); }
   try {
     if (redisConfigured()) {

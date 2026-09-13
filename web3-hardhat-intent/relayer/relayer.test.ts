@@ -4,7 +4,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ArcRelayer as Relayer } from "./index";
-import type { EventLog } from "ethers";
+import type { EventLog, TransactionReceipt as EthersReceipt, TransactionResponse } from "ethers";
+import { Interface } from "ethers";
+import type { TransactionReceipt } from "viem";
+import { ARC_GATEWAY_ABI } from "../../src/lib/contracts";
+import { isConfirmedGatewayIntent } from "../../src/lib/intentReceipt";
+import { verifyDeposit } from "../scripts/reconcile-deposit";
 import { decodeStoredJson, RedisError, redisGet, redisSave } from "./redis";
 
 const stateDirectory = mkdtempSync(join(tmpdir(), "arcflow-relayer-test-"));
@@ -71,6 +76,69 @@ function source() {
 }
 
 const event = { args: [user, target, 0n, 1n], transactionHash: txHash } as unknown as EventLog;
+
+test("queue accepts gateway events inside wallet/router transactions", () => {
+  const gateway = "0xfC18C1Ae3ac3242ea7dB7839D396f51F8692F5EA";
+  const abi = new Interface(ARC_GATEWAY_ABI);
+  for (const eventName of ["IntentForwarded", "IntentForwardedWithData"]) {
+    const log = abi.encodeEventLog(abi.getEvent(eventName)!, eventName === "IntentForwarded"
+      ? [user, target, 2, 1789334376]
+      : [user, target, "0x1234", 2, 1789334376]);
+    const receipt = {
+      status: "success", to: "0xdb9b1e94b5b69df7e401ddbede43491141047db3",
+      logs: [{ ...log, address: gateway.toLowerCase() }],
+    } as unknown as TransactionReceipt;
+    assert.equal(isConfirmedGatewayIntent(receipt, gateway), true);
+    assert.equal(isConfirmedGatewayIntent({ ...receipt, status: "reverted" }, gateway), false);
+    assert.equal(isConfirmedGatewayIntent(receipt, user), false);
+    assert.equal(isConfirmedGatewayIntent({ ...receipt, logs: [] }, gateway), false);
+  }
+});
+
+test("queue rejects a malformed event even when its emitter matches", () => {
+  const receipt = { status: "success", logs: [{ address: target, topics: [], data: "0x1234" }] } as unknown as TransactionReceipt;
+  assert.equal(isConfirmedGatewayIntent(receipt, target), false);
+});
+
+test("recovery verifies calldata and both success events before accepting a completion", () => {
+  const gateway = "0x3333333333333333333333333333333333333333";
+  const executor = "0x4444444444444444444444444444444444444444";
+  const config = { sourceChainId: 84532, gateway, executor, vault: target };
+  const gatewayInterface = new Interface(ARC_GATEWAY_ABI);
+  const vaultInterface = new Interface(["function depositFor(address user,uint256 amount)", "event Deposited(address indexed user,uint256 amount)"]);
+  const executorInterface = new Interface(["function executeWithData(address user,address target,bytes data)", "event IntentExecuted(address indexed user,address indexed target,bool success)"]);
+  const data = vaultInterface.encodeFunctionData("depositFor", [user, 1000000]);
+  const encodeLog = (abi: Interface, name: string, address: string, args: unknown[]) => ({
+    address, ...abi.encodeEventLog(abi.getEvent(name)!, args),
+  });
+  const sourceReceipt = {
+    hash: txHash, status: 1, to: user,
+    logs: [encodeLog(gatewayInterface, "IntentForwardedWithData", gateway, [user, target, data, 2, 100])],
+  } as unknown as EthersReceipt;
+  const executionHash = `0x${"c".repeat(64)}`;
+  const execution = {
+    hash: executionHash, status: 1,
+    logs: [
+      encodeLog(executorInterface, "IntentExecuted", executor, [user, target, true]),
+      encodeLog(vaultInterface, "Deposited", target, [user, 1000000]),
+    ],
+  } as unknown as EthersReceipt;
+  const transaction = {
+    hash: executionHash, to: executor, data: executorInterface.encodeFunctionData("executeWithData", [user, target, data]),
+  } as TransactionResponse;
+  const recovered = verifyDeposit(config, sourceReceipt, execution, transaction, 105);
+  assert.equal(recovered.status, "completed");
+  assert.equal(recovered.txHash, txHash);
+  assert.equal(recovered.data, "1000000");
+  assert.throws(() => verifyDeposit(config, sourceReceipt, execution, transaction, 99), /predates/);
+  assert.throws(() => verifyDeposit(config, sourceReceipt, { ...execution, status: 0 } as EthersReceipt, transaction, 105), /successful/);
+  assert.throws(() => verifyDeposit(config, sourceReceipt, { ...execution, logs: execution.logs.slice(0, 1) } as unknown as EthersReceipt, transaction, 105), /does not confirm/);
+  assert.throws(() => verifyDeposit(config, sourceReceipt, execution, { ...transaction, to: user } as TransactionResponse, 105), /executor receipt/);
+  assert.throws(() => verifyDeposit(config, sourceReceipt, execution, {
+    ...transaction, data: executorInterface.encodeFunctionData("executeWithData", [target, target, data]),
+  } as TransactionResponse, 105), /calldata does not match/);
+  assert.throws(() => verifyDeposit({ ...config, gateway: user }, sourceReceipt, execution, transaction, 105), /exactly one/);
+});
 
 test("legacy values and current writes round-trip as objects and arrays", async () => {
   for (const value of [{ updatedAt: 123, sources: [84532] }, [record], { sourceChainId: 84532, txHash }]) {

@@ -134,8 +134,13 @@ export function IntentFlowProvider({ kind, children }: { kind: "counter" | "todo
         setPhaseOverride("relayer_pending");
         try {
           const queued = await fetch("/api/intents", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceChainId: source.chain.id, txHash }) });
-          if (!queued.ok) console.warn("Direct intent queue unavailable; relayer will use source-chain logs");
-        } catch { console.warn("Direct intent queue unavailable; relayer will use source-chain logs"); }
+          if (!queued.ok) {
+            const result = await queued.json().catch(() => null) as { error?: string } | null;
+            setError(`Source transaction confirmed, but the relayer queue rejected it: ${result?.error || `HTTP ${queued.status}`}. Waiting for source-log detection. Do not submit the same instruction again.`);
+          }
+        } catch {
+          setError("Source transaction confirmed, but the relayer queue could not be reached. Waiting for source-log detection. Do not submit the same instruction again.");
+        }
         await refresh();
       }
     } catch (cause) {
