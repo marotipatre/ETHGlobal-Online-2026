@@ -40,6 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-public/relayer-health.json
+# relayer runtime files - seed versions are committed for Vercel cold start
+# the relayer overwrites these at runtime when running locally
 public/relayer-checkpoints.json
 public/intent-queue/

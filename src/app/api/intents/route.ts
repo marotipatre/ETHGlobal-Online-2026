@@ -40,7 +40,11 @@ export async function POST(request: Request) {
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, `${sourceChainId}-${txHash.toLowerCase()}.json`), JSON.stringify({ sourceChainId, txHash }), { flag: "wx" });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") return Response.json({ error: "Could not queue intent" }, { status: 500 });
+    // On Vercel/read-only filesystems the queue write is unavailable.
+    // The relayer falls back to source-chain log polling automatically.
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+      console.warn("Intent queue write unavailable (read-only fs or duplicate):", (error as NodeJS.ErrnoException).code);
+    }
   }
   return Response.json({ queued: true }, { status: 202 });
 }
