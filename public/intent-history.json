@@ -1,5 +1,87 @@
 [
   {
+    "txHash": "0x9419a3e4fbdcae1c60178661f36d199fac31c7213c2ae7b4376b8cf1b79132d7",
+    "user": "0xdAF0182De86F904918Db8d07c7340A1EfcDF8244",
+    "target": "0x6CEB9E7404ea63D102Fa3dEc736be16a439bD7DB",
+    "nonce": 71,
+    "timestamp": 1789310515000,
+    "sourceChainId": 50312,
+    "status": "completed",
+    "data": "500000",
+    "action": "withdraw",
+    "executionHash": "0x75361ce2e0d1454afe17ba1bc37083b96836f3db9ea7e4abc1d5567436cc6ca0"
+  },
+  {
+    "txHash": "0x54173a8126ea3708a56d6b7abdac39d3cdcb974370db75eda2cf76a01dffb213",
+    "user": "0xdAF0182De86F904918Db8d07c7340A1EfcDF8244",
+    "target": "0x6CEB9E7404ea63D102Fa3dEc736be16a439bD7DB",
+    "nonce": 3,
+    "timestamp": 1789310501000,
+    "sourceChainId": 10143,
+    "status": "completed",
+    "action": "harvest",
+    "executionHash": "0x2da1923a34dfdd946b267105f574dcf04dc831a35e37b33d119c702bf1127545"
+  },
+  {
+    "txHash": "0x21e5e45cc0433e038dcf1c28cc9d265efa4fd2319d65fb7307bf631e8d63ef61",
+    "user": "0xdAF0182De86F904918Db8d07c7340A1EfcDF8244",
+    "target": "0x6CEB9E7404ea63D102Fa3dEc736be16a439bD7DB",
+    "nonce": 2,
+    "timestamp": 1789310388000,
+    "sourceChainId": 10143,
+    "status": "failed",
+    "action": "harvest",
+    "executionHash": "0x3acbea4055dd42ea38fa2431a0c7c6c467b8eb9364e05fbc004a0ef68e5c8ad4",
+    "error": "ArcExecutor emitted an unsuccessful execution"
+  },
+  {
+    "txHash": "0x10cb03aa1d395ef3ea4a3236e87e6a7bf38a1a63f8378993fd9e9577a4403d5b",
+    "user": "0xdAF0182De86F904918Db8d07c7340A1EfcDF8244",
+    "target": "0x6CEB9E7404ea63D102Fa3dEc736be16a439bD7DB",
+    "nonce": 2,
+    "timestamp": 1789310372000,
+    "sourceChainId": 84532,
+    "status": "completed",
+    "data": "2000000",
+    "action": "deposit",
+    "executionHash": "0x34aed3b47f15cf8f46d11728cc2f71d3ef23c1a3b745263921cc0a0b9708ffdf"
+  },
+  {
+    "txHash": "0x415dadc79563037c4bb37a4a756c9d2b5faa37809e51cc4a86a8eb212091ec33",
+    "user": "0xdAF0182De86F904918Db8d07c7340A1EfcDF8244",
+    "target": "0xB8bc3B37f49A063176d96381f53c773309840dBE",
+    "nonce": 70,
+    "timestamp": 1789310240000,
+    "sourceChainId": 50312,
+    "status": "completed",
+    "data": "500000",
+    "action": "withdraw",
+    "executionHash": "0xe482e0d186d6748b5370ffcc4fe3d498b53fbae12559b8c942b878346af55a8a"
+  },
+  {
+    "txHash": "0x21e46eda7725c139f07d03e7195745761fe5d890a2e86410e4c5112674c44f33",
+    "user": "0xdAF0182De86F904918Db8d07c7340A1EfcDF8244",
+    "target": "0xB8bc3B37f49A063176d96381f53c773309840dBE",
+    "nonce": 1,
+    "timestamp": 1789310224000,
+    "sourceChainId": 10143,
+    "status": "completed",
+    "action": "harvest",
+    "executionHash": "0x2f63f4ca646f8c28c3383579fe2db581f05b5d8c5ddf64134ea2b202a9acde3f"
+  },
+  {
+    "txHash": "0x9fe74e8f5d7e1b2ba944a238552fee6e0747e902a589733500759b2f0c0ed4f5",
+    "user": "0xdAF0182De86F904918Db8d07c7340A1EfcDF8244",
+    "target": "0xB8bc3B37f49A063176d96381f53c773309840dBE",
+    "nonce": 1,
+    "timestamp": 1789310206000,
+    "sourceChainId": 84532,
+    "status": "completed",
+    "data": "2000000",
+    "action": "deposit",
+    "executionHash": "0xee35390ba145ee7e6d5b4398c02fbf8875475c9e3213415777e01740ff35bcac"
+  },
+  {
     "txHash": "0x66e2d2420728413110b49f1c3f3cae3ac67ed39452506b0f4239d00ec20230f5",
     "user": "0xD9D75bFFbB07426B7d00B47A47e406361e123694",
     "target": "0x20371AD0921151682AEEA67C16db38144ebEaa8E",

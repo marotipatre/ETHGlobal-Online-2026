@@ -334,5 +334,7 @@ export const CONTRACT_ADDRESSES = {
   // Arc Chain - where execution happens
   COUNTER: process.env.NEXT_PUBLIC_COUNTER_ADDRESS || "",
   TODO: process.env.NEXT_PUBLIC_TODO_ADDRESS || "",
+  VAULT: process.env.NEXT_PUBLIC_VAULT_ADDRESS || "",
+  ARC_USDC: process.env.NEXT_PUBLIC_ARC_USDC_ADDRESS || "0x3600000000000000000000000000000000000000",
   ARC_EXECUTOR: process.env.NEXT_PUBLIC_ARC_EXECUTOR_ADDRESS || "",
 } as const;

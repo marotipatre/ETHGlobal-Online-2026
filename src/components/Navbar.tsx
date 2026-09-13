@@ -8,8 +8,8 @@ import { ConnectWallet } from "./ConnectWallet";
 
 const links = [
   { href: "/", label: "Overview" },
-  { href: "/counter-app", label: "Counter" },
-  { href: "/todo-app", label: "Todo" },
+  { href: "/vault", label: "USDC Vault" },
+  { href: "/basic-testing", label: "Basic Testing" },
   { href: "/architecture", label: "Architecture" },
   { href: "/sdk", label: "SDK" },
 ];
@@ -17,7 +17,7 @@ const links = [
 export default function Navbar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
-  const navLink = (href: string) => `rounded-lg px-3 py-2 text-sm font-semibold ${pathname === href ? "bg-[var(--primary)] text-[#0b100c]" : "text-[var(--muted)] hover:bg-white/5 hover:text-white"}`;
+  const navLink = (href: string) => `rounded-lg px-3 py-2 text-sm font-semibold ${pathname === href || href === "/basic-testing" && (pathname === "/counter-app" || pathname === "/todo-app") ? "bg-[var(--primary)] text-[#0b100c]" : "text-[var(--muted)] hover:bg-white/5 hover:text-white"}`;
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-[var(--line)] bg-[#070908e8] backdrop-blur-xl">

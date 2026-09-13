@@ -17,8 +17,8 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "ArcFlow | Chain-Abstracted Payments",
-  description: "Submit intents from Somnia, Base Sepolia, or Monad Testnet and track execution on Arc Testnet.",
+  title: "ArcFlow | Cross-Chain USDC Vault Demo",
+  description: "Fund an Arc Testnet USDC vault and manage it by intents from Somnia, Base Sepolia, or Monad Testnet.",
 };
 
 export default function RootLayout({

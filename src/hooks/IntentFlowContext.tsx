@@ -16,7 +16,7 @@ export type IntentRecord = {
   status: IntentStatus;
   executionHash?: string;
   sourceChainId?: number;
-  action?: "add" | "toggle" | "delete";
+  action?: "add" | "toggle" | "delete" | "deposit" | "withdraw" | "harvest";
   data?: string;
   error?: string;
 };
@@ -36,9 +36,9 @@ type Flow = {
 
 const Context = createContext<Flow | null>(null);
 const recordKey = (record: IntentRecord) => `${record.sourceChainId || somniaTestnet.id}:${record.txHash.toLowerCase()}`;
-const storageKey = (kind: "counter" | "todo", user: string) => `arcflow:${kind}:${user.toLowerCase()}`;
+const storageKey = (kind: "counter" | "todo" | "vault", user: string) => `arcflow:${kind}:${user.toLowerCase()}`;
 
-export function IntentFlowProvider({ kind, children }: { kind: "counter" | "todo"; children: ReactNode }) {
+export function IntentFlowProvider({ kind, children }: { kind: "counter" | "todo" | "vault"; children: ReactNode }) {
   const { address } = useAccount();
   const chainId = useChainId();
   const source = getSourceNetwork(chainId);
@@ -51,7 +51,7 @@ export function IntentFlowProvider({ kind, children }: { kind: "counter" | "todo
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [relayerOnline, setRelayerOnline] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const target = kind === "counter" ? CONTRACT_ADDRESSES.COUNTER : CONTRACT_ADDRESSES.TODO;
+  const target = kind === "counter" ? CONTRACT_ADDRESSES.COUNTER : kind === "todo" ? CONTRACT_ADDRESSES.TODO : CONTRACT_ADDRESSES.VAULT;
 
   const refresh = useCallback(async () => {
     if (!address) { setIntents([]); setIsLoadingHistory(false); return; }
