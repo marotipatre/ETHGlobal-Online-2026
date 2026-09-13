@@ -193,7 +193,7 @@ class ArcRelayer {
     const latest = await source.provider.getBlockNumber();
     while (source.cursor < latest) {
       const from = source.cursor + 1;
-      const chunkSize = source.chainId === 10143 ? 99 : source.chainId === 84532 ? 9 : 499;
+      const chunkSize = source.chainId === 10143 ? 99 : source.chainId === 84532 ? 49 : 499;
       const to = Math.min(from + chunkSize, latest);
       const [basic, withData] = await Promise.all([
         source.contract.queryFilter(source.contract.filters.IntentForwarded(), from, to),
@@ -204,6 +204,7 @@ class ArcRelayer {
       source.cursor = to;
       this.checkpoints[String(source.chainId)] = to;
       saveJson(checkpointPath, this.checkpoints);
+      if (source.chainId === 84532) await new Promise((r) => setTimeout(r, 300));
     }
   }
 
