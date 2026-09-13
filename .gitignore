@@ -46,4 +46,5 @@ next-env.d.ts
 # relayer runtime files - seed versions are committed for Vercel cold start
 # the relayer overwrites these at runtime when running locally
 public/relayer-checkpoints.json
+public/relayer-health.json
 public/intent-queue/
