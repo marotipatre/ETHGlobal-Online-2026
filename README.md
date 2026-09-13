@@ -1,7 +1,23 @@
+## ArcFlow — Arc-native USDC Vault · Cross-Chain Intent Protocol
+
+> Built on **Arc** — Circle's purpose-built EVM-compatible L1 — using **Arc USDC** as the native stablecoin.
+
+ArcFlow is a cross-chain intent forwarding protocol that lets users control an **Arc-native USDC vault** from any supported EVM chain — Somnia Testnet, Base Sepolia, or Monad Testnet — without bridging or switching networks.
+
+**Core Circle / Arc stack used:**
+- **Arc Testnet** — destination execution chain (Circle's EVM L1)
+- **Arc USDC** (`0x3600000000000000000000000000000000000000`) — native stablecoin powering the vault
+- **ArcGateway** — source-chain intent entry point (deployed on 3 testnets)
+- **ArcExecutor** — Arc-side authorization and dispatch contract
+- **StablecoinVault** — 1:1 USDC-backed vault with deposit, withdraw, and harvest
+
+The flagship demo is the [USDC Vault](/src/app/vault/page.tsx). Fund it with **Arc Testnet USDC**, then submit deposit, withdraw, or harvest instructions from any supported source chain. Counter and Todo remain under **Basic Testing** as pipeline primitives.
+
+This is a **testnet, centralized-relayer prototype**. Source-chain assets do not move to Arc when an intent is forwarded — users fund Arc-side liquidity directly. The UI does not advertise APY. Yield is real test USDC separately funded by the vault owner.
 
 ## 🎯 What is ArcFlow?
 
-ArcFlow is a **cross-chain intent forwarding system** that solves the biggest friction point in multi-chain applications: **network switching and bridging**.
+ArcFlow is a **cross-chain intent forwarding system** for controlling Arc-side contracts from deployed source gateways.
 
 ### The Problem
 - Users must switch networks in their wallet
@@ -10,11 +26,11 @@ ArcFlow is a **cross-chain intent forwarding system** that solves the biggest fr
 - High gas costs on multiple chains
 
 ### The Solution
-- ✅ **No Network Switching** - Users stay on their preferred chain
-- ✅ **No Bridging Required** - Gateway handles intent forwarding
+- ✅ **Source-side management** - Once Arc liquidity is funded, users can send management intents from a supported source network
+- ✅ **No bridge inside ArcFlow** - Gateway forwards instructions, not funds
 - ✅ **Any Wallet** - MetaMask, Phantom, Coinbase Wallet, etc.
 - ✅ **Normal Solidity** - Write contracts as usual, no special logic needed
-- ✅ **Universal Arc Account** - One smart account on Arc for all external wallets
+- ✅ **Same EVM address on Arc** - The vault attributes shares and Arc payouts to the source signer address
 
 ---
 
@@ -79,7 +95,7 @@ SOURCE CHAIN                    OFF-CHAIN                  ARC CHAIN
 
 ### For Users
 - **Source network selection** - Switch your wallet among the configured source testnets
-- **No Bridging** - No need to bridge funds to Arc
+- **Explicit Arc funding** - The vault cannot deposit USDC that is absent on Arc
 - **Any Wallet** - MetaMask, Phantom, Coinbase Wallet, etc.
 - **Simple UX** - One transaction, automatic execution
 
@@ -87,7 +103,7 @@ SOURCE CHAIN                    OFF-CHAIN                  ARC CHAIN
 - **Normal Solidity** - Write contracts as usual
 - **Simple Integration** - Just add the UI kit component
 - **Flexible** - Works with any smart contract on Arc
-- **Production-Ready** - Comprehensive tests and error handling
+- **Prototype scope** - Testnet-only with a trusted relayer; review and stronger proof verification required before production
 
 ### Technical Features
 - ✅ Event-based intent forwarding
@@ -95,7 +111,7 @@ SOURCE CHAIN                    OFF-CHAIN                  ARC CHAIN
 - ✅ Relayer authorization system
 - ✅ Custom calldata support
 - ✅ Comprehensive test coverage
-- ✅ Type-safe TypeScript SDK
+- ✅ Typed React/viem integration
 - ✅ Real-time intent tracking
 
 ---
