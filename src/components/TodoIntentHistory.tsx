@@ -24,17 +24,12 @@ function getStatusIcon(status: TodoIntentStatus) {
 
 function getStatusBadgeColor(status: TodoIntentStatus) {
   switch (status) {
-    case "pending":
-      return "bg-yellow-100 text-yellow-800 border-yellow-500";
+    case "pending": return "status-pending border";
     case "detected":
-    case "executing":
-      return "bg-blue-100 text-blue-800 border-blue-500";
-    case "completed":
-      return "bg-green-100 text-green-800 border-green-500";
-    case "failed":
-      return "bg-red-100 text-red-800 border-red-500";
-    default:
-      return "bg-gray-100 text-gray-800 border-gray-500";
+    case "executing": return "status-progress border";
+    case "completed": return "status-completed border";
+    case "failed": return "status-failed border";
+    default: return "border border-[var(--line)] text-[var(--muted)]";
   }
 }
 
@@ -53,14 +48,10 @@ function getActionIcon(action: "add" | "toggle" | "delete" | "unknown") {
 
 function getActionBadgeColor(action: "add" | "toggle" | "delete" | "unknown") {
   switch (action) {
-    case "add":
-      return "bg-green-100 text-green-800 border-green-500";
-    case "toggle":
-      return "bg-blue-100 text-blue-800 border-blue-500";
-    case "delete":
-      return "bg-red-100 text-red-800 border-red-500";
-    default:
-      return "bg-white/10 text-[var(--muted)] border-[var(--line)]";
+    case "add": return "status-completed border";
+    case "toggle": return "status-progress border";
+    case "delete": return "status-failed border";
+    default: return "border border-[var(--line)] text-[var(--muted)]";
   }
 }
 
@@ -69,155 +60,76 @@ export function TodoIntentHistory() {
 
   if (isLoadingHistory && intents.length === 0) {
     return (
-      <div className="neo-card p-8 bg-white">
-        <h3 className="font-black text-xl text-black mb-4 flex items-center gap-2">
-          <RefreshCw className="w-5 h-5 animate-spin" />
-          Todo Intent History
+      <div className="neo-card p-8">
+        <h3 className="mb-4 flex items-center gap-2 text-xl font-bold text-white">
+          <RefreshCw className="w-5 h-5 animate-spin text-[var(--primary)]" /> Todo Intent History
         </h3>
-        <p className="text-black/60 text-center py-8">
-          Loading intent history...
-        </p>
+        <p className="py-8 text-center text-[var(--muted)]">Loading intent history...</p>
       </div>
     );
   }
 
   if (intents.length === 0) {
     return (
-      <div className="neo-card p-8 bg-white">
-        <h3 className="font-black text-xl text-black mb-4">Todo Intent History</h3>
-        <p className="text-black/60 text-center py-8">
-          No todo intents found. Add, toggle, or delete a todo to see it here!
-        </p>
+      <div className="neo-card p-8">
+        <h3 className="mb-4 text-xl font-bold text-white">Todo Intent History</h3>
+        <p className="py-8 text-center text-[var(--muted)]">No todo intents found. Add, toggle, or delete a todo to see it here!</p>
       </div>
     );
   }
 
   return (
-    <div className="neo-card p-8 bg-white">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="font-black text-xl text-black">Todo Intent History</h3>
-        <div className="text-sm text-black/60 font-medium">
-          {intents.length} intent{intents.length !== 1 ? "s" : ""}
-        </div>
+    <div className="neo-card p-6 md:p-8">
+      <div className="mb-6 flex items-center justify-between">
+        <h3 className="text-xl font-bold text-white">Todo Intent History</h3>
+        <span className="text-sm text-[var(--muted)]">{intents.length} intent{intents.length !== 1 ? "s" : ""}</span>
       </div>
-      
-      {/* Scrollable Table Container */}
-      <div className="border-2 border-black rounded-lg overflow-hidden shadow-[4px_4px_0px_0px_#000]">
-        <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-          <table className="w-full border-collapse bg-white">
-            <thead className="bg-black text-white sticky top-0 z-10">
+      <div className="overflow-hidden rounded-xl border border-[var(--line)]">
+        <div className="max-h-[600px] overflow-x-auto overflow-y-auto">
+          <table className="w-full border-collapse">
+            <thead className="sticky top-0 z-10 bg-[var(--surface-raised)]">
               <tr>
-                <th className="px-4 py-3 text-left font-black text-sm border-r-2 border-white/20">
-                  Action
-                </th>
-                <th className="px-4 py-3 text-left font-black text-sm border-r-2 border-white/20">
-                  Status
-                </th>
-                <th className="px-4 py-3 text-left font-black text-sm border-r-2 border-white/20">
-                  Timestamp
-                </th>
-                <th className="px-4 py-3 text-left font-black text-sm border-r-2 border-white/20">
-                  Source TX
-                </th>
-                <th className="px-4 py-3 text-left font-black text-sm border-r-2 border-white/20">
-                  Arc Execution
-                </th>
-                <th className="px-4 py-3 text-left font-black text-sm border-r-2 border-white/20">
-                  Nonce
-                </th>
-                <th className="px-4 py-3 text-left font-black text-sm">
-                  Data
-                </th>
+                {["Action","Status","Timestamp","Source TX","Arc Execution","Nonce","Data"].map((h) => (
+                  <th key={h} className="border-b border-[var(--line)] px-4 py-3 text-left text-xs font-bold tracking-[.12em] text-[var(--muted)]">{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {intents.map((intent, index) => (
-                <tr
-                  key={`${intent.txHash}-${intent.nonce}`}
-                  className={`border-b-2 border-black/20 hover:bg-gray-50 transition-colors ${
-                    index % 2 === 0 ? "bg-white" : "bg-gray-50/50"
-                  }`}
-                >
-                  {/* Action */}
-                  <td className="px-4 py-3 border-r-2 border-black/10">
+              {intents.map((intent) => (
+                <tr key={`${intent.txHash}-${intent.nonce}`} className="border-b border-[var(--line)] transition-colors hover:bg-white/5">
+                  <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       {getActionIcon(intent.action)}
-                      <span className={`px-2 py-1 rounded border-2 text-xs font-bold capitalize ${getActionBadgeColor(intent.action)}`}>
-                        {intent.action}
-                      </span>
+                      <span className={`rounded px-2 py-0.5 text-xs font-bold capitalize ${getActionBadgeColor(intent.action)}`}>{intent.action}</span>
                     </div>
                   </td>
-
-                  {/* Status */}
-                  <td className="px-4 py-3 border-r-2 border-black/10">
+                  <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       {getStatusIcon(intent.status)}
-                      <span className={`px-2 py-1 rounded border-2 text-xs font-bold capitalize ${getStatusBadgeColor(intent.status)}`}>
-                        {intent.status}
-                      </span>
+                      <span className={`rounded px-2 py-0.5 text-xs font-bold capitalize ${getStatusBadgeColor(intent.status)}`}>{intent.status}</span>
                     </div>
                   </td>
-
-                  {/* Timestamp */}
-                  <td className="px-4 py-3 border-r-2 border-black/10 text-sm text-black/80">
-                    <div className="flex flex-col">
-                      <span className="font-medium">
-                        {new Date(intent.timestamp).toLocaleDateString()}
-                      </span>
-                      <span className="text-xs text-black/60">
-                        {new Date(intent.timestamp).toLocaleTimeString()}
-                      </span>
-                    </div>
+                  <td className="px-4 py-3 text-sm text-[var(--muted)]">
+                    <div>{new Date(intent.timestamp).toLocaleDateString()}</div>
+                    <div className="text-xs">{new Date(intent.timestamp).toLocaleTimeString()}</div>
                   </td>
-
-                  {/* Somnia TX */}
-                  <td className="px-4 py-3 border-r-2 border-black/10">
-                    <a
-                      href={`${getSourceNetwork(intent.sourceChainId || somniaTestnet.id)?.chain.blockExplorers?.default.url || somniaTestnet.blockExplorers.default.url}/tx/${intent.txHash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 text-sm font-mono"
-                    >
-                      {intent.txHash.slice(0, 8)}...{intent.txHash.slice(-6)}
-                      <ExternalLink className="w-3 h-3" />
+                  <td className="px-4 py-3">
+                    <a href={`${getSourceNetwork(intent.sourceChainId || somniaTestnet.id)?.chain.blockExplorers?.default.url || somniaTestnet.blockExplorers.default.url}/tx/${intent.txHash}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 font-mono text-sm text-[var(--secondary)] hover:underline">
+                      {intent.txHash.slice(0, 8)}…{intent.txHash.slice(-6)}<ExternalLink className="w-3 h-3" />
                     </a>
                   </td>
-
-                  {/* Arc Execution */}
-                  <td className="px-4 py-3 border-r-2 border-black/10">
+                  <td className="px-4 py-3">
                     {intent.executionHash ? (
-                      <a
-                        href={`${arcTestnet.blockExplorers.default.url}/tx/${intent.executionHash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 text-sm font-mono"
-                      >
-                        {intent.executionHash.slice(0, 8)}...{intent.executionHash.slice(-6)}
-                        <ExternalLink className="w-3 h-3" />
+                      <a href={`${arcTestnet.blockExplorers.default.url}/tx/${intent.executionHash}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 font-mono text-sm text-[var(--secondary)] hover:underline">
+                        {intent.executionHash.slice(0, 8)}…{intent.executionHash.slice(-6)}<ExternalLink className="w-3 h-3" />
                       </a>
-                    ) : (
-                      <span className="text-xs text-black/60 italic">Pending</span>
-                    )}
+                    ) : <span className="text-xs italic text-[var(--muted)]">Pending</span>}
                   </td>
-
-                  {/* Nonce */}
-                  <td className="px-4 py-3 border-r-2 border-black/10 text-sm font-mono text-black/80">
-                    {intent.nonce}
-                  </td>
-
-                  {/* Data */}
-                  <td className="px-4 py-3 text-sm text-black/80">
+                  <td className="px-4 py-3 font-mono text-sm text-[var(--muted)]">{intent.nonce}</td>
+                  <td className="px-4 py-3 text-sm text-[var(--muted)]">
                     {intent.data ? (
-                      <span className="font-mono text-xs">
-                        {intent.action === "add" 
-                          ? intent.data.length > 30 
-                            ? `${intent.data.slice(0, 30)}...` 
-                            : intent.data
-                          : intent.data}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-black/60 italic">-</span>
-                    )}
+                      <span className="font-mono text-xs">{intent.action === "add" && intent.data.length > 30 ? `${intent.data.slice(0, 30)}…` : intent.data}</span>
+                    ) : <span className="text-xs italic text-[var(--muted)]">-</span>}
                   </td>
                 </tr>
               ))}

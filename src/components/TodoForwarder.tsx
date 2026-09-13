@@ -42,8 +42,8 @@ export function TodoForwarder() {
       </div>
 
       {!wallet.isConnected && (
-        <div className="bg-yellow-100 border-2 border-yellow-500 rounded-lg p-4 mb-4">
-          <p className="text-yellow-800 font-bold flex items-center gap-2">
+        <div className="mb-4 rounded-lg border border-yellow-300/30 bg-yellow-300/10 p-4">
+          <p className="flex items-center gap-2 text-sm font-bold text-yellow-200">
             <AlertCircle className="w-4 h-4" />
             Connect your wallet to add todos
           </p>
@@ -51,8 +51,8 @@ export function TodoForwarder() {
       )}
 
       {wallet.isConnected && !isOnCorrectNetwork && (
-        <div className="bg-yellow-100 border-2 border-yellow-500 rounded-lg p-4 mb-4">
-          <p className="text-yellow-800 font-bold">
+        <div className="mb-4 rounded-lg border border-yellow-300/30 bg-yellow-300/10 p-4">
+          <p className="text-sm font-bold text-yellow-200">
             Choose a configured source network above to add todos.
           </p>
         </div>
