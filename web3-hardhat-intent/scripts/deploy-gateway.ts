@@ -1,4 +1,4 @@
-import { ethers } from "hardhat";
+import { ethers, network } from "hardhat";
 
 /**
  * Deploy ArcGateway contract on Somnia Testnet (Source Chain)
@@ -18,13 +18,19 @@ async function main() {
   const arcGateway = await ArcGateway.deploy();
   await arcGateway.waitForDeployment();
   const arcGatewayAddress = await arcGateway.getAddress();
+  const deploymentReceipt = await arcGateway.deploymentTransaction()?.wait();
   console.log("✅ ArcGateway deployed to:", arcGatewayAddress);
+  console.log("Network:", network.name, "Chain ID:", (await ethers.provider.getNetwork()).chainId.toString());
+  console.log("Deployment block:", deploymentReceipt?.blockNumber);
 
   console.log("\n📋 Deployment Summary (Source Chain):");
   console.log("====================================");
   console.log("ArcGateway Address:   ", arcGatewayAddress);
   console.log("\n💡 Add this to your .env file:");
-  console.log(`ARC_GATEWAY_ADDRESS=${arcGatewayAddress}`);
+  const prefix = network.name === "baseSepolia" ? "BASE_SEPOLIA" : network.name === "monadTestnet" ? "MONAD_TESTNET" : "SOMNIA";
+  console.log(`${prefix}_GATEWAY_ADDRESS=${arcGatewayAddress}`);
+  console.log(`${prefix}_START_BLOCK=${deploymentReceipt?.blockNumber}`);
+  console.log(`NEXT_PUBLIC_${prefix}_GATEWAY_ADDRESS=${arcGatewayAddress}`);
   console.log("\n📝 Next Steps:");
   console.log("1. Update your .env file with the gateway address");
   console.log("2. Configure the relayer with both source and destination addresses");

@@ -1,377 +1,222 @@
-import { ethers } from "ethers";
+import { ethers, type EventLog } from "ethers";
 import * as dotenv from "dotenv";
-import * as fs from "fs";
-import * as path from "path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
-/**
- * Arc Intent Relayer
- * - Listens to intent events on source chain
- * - Executes intents on Arc via ArcExecutor
- * - Guarantees exactly-once execution (MVP level)
- */
-
-// -------------------- Config --------------------
-const SOURCE_RPC =
-  process.env.SOMNIA_TESTNET_RPC_URL ||
-  process.env.SEPOLIA_RPC_URL ||
-  "http://127.0.0.1:8545";
-
-const ARC_RPC =
-  process.env.ARC_TESTNET_RPC_URL ||
-  "https://rpc.testnet.arc.network";
-
-const PRIVATE_KEY = process.env.PRIVATE_KEY!;
-const ARC_GATEWAY_ADDRESS = process.env.ARC_GATEWAY_ADDRESS!;
-const ARC_EXECUTOR_ADDRESS = process.env.ARC_EXECUTOR_ADDRESS!;
-const COUNTER_ADDRESS = process.env.COUNTER_ADDRESS || "";
-const TODO_ADDRESS = process.env.TODO_ADDRESS || "";
-
-const POLL_INTERVAL = Number(process.env.RELAYER_POLL_INTERVAL || 5000);
-
-// Intent history file path (accessible from frontend via public/)
-// Resolve from project root (two levels up from relayer/index.ts)
-const INTENT_HISTORY_FILE = path.resolve(
-  __dirname,
-  "../../public/intent-history.json"
-);
-
-// -------------------- Types --------------------
-type IntentStatus = "pending" | "detected" | "executing" | "completed" | "failed";
-
+type Status = "detected" | "executing" | "completed" | "failed";
 type Intent = {
-  txHash: string;
-  user: string;
-  target: string;
-  nonce: number;
-  timestamp: number;
-  status: IntentStatus;
-  executionHash?: string;
+  txHash: string; user: string; target: string; nonce: number; timestamp: number;
+  status: Status; executionHash?: string; sourceChainId: number;
+  action?: "add" | "toggle" | "delete"; error?: string;
 };
+type Source = { chainId: number; name: string; rpc: string; gateway: string; startBlock?: number; provider: ethers.JsonRpcProvider; contract: ethers.Contract; cursor: number };
 
-// -------------------- ABIs --------------------
-const ARC_GATEWAY_ABI = [
-  "event IntentForwarded(address indexed user, address indexed target, uint256 nonce, uint256 timestamp)",
-  "event IntentForwardedWithData(address indexed user, address indexed target, bytes data, uint256 nonce, uint256 timestamp)",
+const historyPath = path.resolve(__dirname, "../../public/intent-history.json");
+const checkpointPath = path.resolve(__dirname, "../../public/relayer-checkpoints.json");
+const healthPath = path.resolve(__dirname, "../../public/relayer-health.json");
+const queuePath = path.resolve(__dirname, "../../public/intent-queue");
+const gatewayAbi = [
+  "event IntentForwarded(address indexed user,address indexed target,uint256 nonce,uint256 timestamp)",
+  "event IntentForwardedWithData(address indexed user,address indexed target,bytes data,uint256 nonce,uint256 timestamp)",
+];
+const executorAbi = [
+  "function execute(address user,address target) external",
+  "function executeWithData(address user,address target,bytes data) external",
+  "function authorizedRelayers(address) view returns (bool)",
+  "event IntentExecuted(address indexed user,address indexed target,bool success)",
+];
+const todoInterface = new ethers.Interface([
+  "function addTodo(string text)", "function toggleTodo(uint256 id)", "function deleteTodo(uint256 id)",
+]);
+const sourceDefinitions = [
+  { chainId: 50312, name: "Somnia Testnet", rpc: process.env.SOMNIA_TESTNET_RPC_URL || "https://dream-rpc.somnia.network/", gateway: process.env.SOMNIA_GATEWAY_ADDRESS || process.env.ARC_GATEWAY_ADDRESS, startBlock: process.env.SOMNIA_START_BLOCK },
+  { chainId: 11155111, name: "Sepolia", rpc: process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com", gateway: process.env.SEPOLIA_GATEWAY_ADDRESS, startBlock: process.env.SEPOLIA_START_BLOCK },
+  { chainId: 84532, name: "Base Sepolia", rpc: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org", gateway: process.env.BASE_SEPOLIA_GATEWAY_ADDRESS, startBlock: process.env.BASE_SEPOLIA_START_BLOCK },
+  { chainId: 10143, name: "Monad Testnet", rpc: process.env.MONAD_TESTNET_RPC_URL || "https://testnet-rpc.monad.xyz", gateway: process.env.MONAD_TESTNET_GATEWAY_ADDRESS, startBlock: process.env.MONAD_TESTNET_START_BLOCK },
+  { chainId: 421614, name: "Arbitrum Sepolia", rpc: process.env.ARBITRUM_SEPOLIA_RPC_URL || "https://sepolia-rollup.arbitrum.io/rpc", gateway: process.env.ARBITRUM_SEPOLIA_GATEWAY_ADDRESS, startBlock: process.env.ARBITRUM_SEPOLIA_START_BLOCK },
+  { chainId: 11155420, name: "OP Sepolia", rpc: process.env.OPTIMISM_SEPOLIA_RPC_URL || "https://sepolia.optimism.io", gateway: process.env.OPTIMISM_SEPOLIA_GATEWAY_ADDRESS, startBlock: process.env.OPTIMISM_SEPOLIA_START_BLOCK },
 ];
 
-const ARC_EXECUTOR_ABI = [
-  "function execute(address user, address target) external",
-  "function executeWithData(address user, address target, bytes calldata data) external",
-  "function authorizedRelayers(address) external view returns (bool)",
-];
+function loadJson<T>(file: string, fallback: T): T {
+  try { return JSON.parse(fs.readFileSync(file, "utf8")) as T; } catch { return fallback; }
+}
+function saveJson(file: string, value: unknown) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const temporary = `${file}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(value, null, 2));
+  fs.renameSync(temporary, file);
+}
+function key(intent: Pick<Intent, "sourceChainId" | "txHash">) { return `${intent.sourceChainId}:${intent.txHash.toLowerCase()}`; }
+function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }
 
-// -------------------- Relayer --------------------
 class ArcRelayer {
-  sourceProvider: ethers.JsonRpcProvider;
-  arcProvider: ethers.JsonRpcProvider;
-  wallet: ethers.Wallet;
-  gateway: ethers.Contract;
-  executor: ethers.Contract;
-
-  lastProcessedBlock = 0;
-  processedIntents = new Set<string>(); // replay protection
+  private arc: ethers.JsonRpcProvider;
+  private signer: ethers.Wallet;
+  private executor: ethers.Contract;
+  private sources: Source[];
+  private history: Intent[] = [];
+  private checkpoints: Record<string, number> = {};
+  private counter: string;
+  private todo: string;
+  private interval: number;
 
   constructor() {
-    // Ensure the directory exists
-    const dir = path.dirname(INTENT_HISTORY_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    const privateKey = process.env.PRIVATE_KEY;
+    const executorAddress = process.env.ARC_EXECUTOR_ADDRESS;
+    this.counter = process.env.COUNTER_ADDRESS || "";
+    this.todo = process.env.TODO_ADDRESS || "";
+    if (!privateKey || !executorAddress || !ethers.isAddress(executorAddress) || !ethers.isAddress(this.counter) || !ethers.isAddress(this.todo)) {
+      throw new Error("Configure PRIVATE_KEY, ARC_EXECUTOR_ADDRESS, COUNTER_ADDRESS, and TODO_ADDRESS in web3-hardhat-intent/.env");
     }
-    
-    // Initialize empty JSON file if it doesn't exist
-    if (!fs.existsSync(INTENT_HISTORY_FILE)) {
-      fs.writeFileSync(INTENT_HISTORY_FILE, JSON.stringify([], null, 2));
-    }
-    if (!PRIVATE_KEY || !ARC_GATEWAY_ADDRESS || !ARC_EXECUTOR_ADDRESS) {
-      throw new Error("❌ Missing .env configuration");
-    }
-
-    this.sourceProvider = new ethers.JsonRpcProvider(SOURCE_RPC);
-    this.arcProvider = new ethers.JsonRpcProvider(ARC_RPC);
-    this.wallet = new ethers.Wallet(PRIVATE_KEY, this.arcProvider);
-
-    this.gateway = new ethers.Contract(
-      ARC_GATEWAY_ADDRESS,
-      ARC_GATEWAY_ABI,
-      this.sourceProvider
-    );
-
-    this.executor = new ethers.Contract(
-      ARC_EXECUTOR_ADDRESS,
-      ARC_EXECUTOR_ABI,
-      this.wallet
-    );
+    this.arc = new ethers.JsonRpcProvider(process.env.ARC_TESTNET_RPC_URL || "https://rpc.testnet.arc.network");
+    this.signer = new ethers.Wallet(privateKey, this.arc);
+    this.executor = new ethers.Contract(executorAddress, executorAbi, this.signer);
+    this.sources = sourceDefinitions.filter((item) => item.gateway && ethers.isAddress(item.gateway)).map((item) => {
+      const provider = new ethers.JsonRpcProvider(item.rpc);
+      return { chainId: item.chainId, name: item.name, rpc: item.rpc, gateway: item.gateway!, startBlock: item.startBlock ? Number(item.startBlock) : undefined, provider, contract: new ethers.Contract(item.gateway!, gatewayAbi, provider), cursor: -1 };
+    });
+    if (!this.sources.length) throw new Error("No source gateway addresses configured");
+    this.interval = Math.max(1000, Number(process.env.RELAYER_POLL_INTERVAL || 5000));
+    this.history = loadJson<Intent[]>(historyPath, []).map((item) => ({ ...item, sourceChainId: item.sourceChainId || 50312 }));
+    this.checkpoints = loadJson<Record<string, number>>(checkpointPath, {});
   }
 
   async start() {
-    console.log("\n🤖 Arc Relayer Started\n");
-    console.log("Relayer:", this.wallet.address);
-    console.log("Gateway:", ARC_GATEWAY_ADDRESS);
-    console.log("Executor:", ARC_EXECUTOR_ADDRESS);
-    if (COUNTER_ADDRESS) console.log("Counter:", COUNTER_ADDRESS);
-    if (TODO_ADDRESS) console.log("Todo:", TODO_ADDRESS);
-    console.log("Poll Interval:", POLL_INTERVAL, "ms");
-    console.log("Intent History File:", INTENT_HISTORY_FILE, "\n");
-
-    await this.verifyAuthorization();
-
-    // Load existing processed intents from history file
-    this.loadProcessedIntents();
-
-    this.lastProcessedBlock = await this.sourceProvider.getBlockNumber();
-    console.log("📍 Starting from block:", this.lastProcessedBlock);
-    console.log("👂 Listening for intents...\n");
-
-    while (true) {
-      await this.poll();
-      await this.sleep(POLL_INTERVAL);
-    }
-  }
-
-  async verifyAuthorization() {
-    const ok = await this.executor.authorizedRelayers(this.wallet.address);
-    if (!ok) {
-      throw new Error(
-        `❌ Relayer ${this.wallet.address} not authorized in ArcExecutor`
-      );
-    }
-    console.log("✅ Relayer authorized\n");
-  }
-
-  async poll() {
-    const currentBlock = await this.sourceProvider.getBlockNumber();
-    if (currentBlock <= this.lastProcessedBlock) return;
-
-    const from = this.lastProcessedBlock + 1;
-    const to = currentBlock;
-
-    const basicEvents = await this.gateway.queryFilter(
-      this.gateway.filters.IntentForwarded(),
-      from,
-      to
-    );
-
-    const dataEvents = await this.gateway.queryFilter(
-      this.gateway.filters.IntentForwardedWithData(),
-      from,
-      to
-    );
-
-    if (basicEvents.length > 0 || dataEvents.length > 0) {
-      console.log(`🔍 Found ${basicEvents.length} basic intents and ${dataEvents.length} data intents in blocks ${from}-${to}`);
-    }
-
-    for (const e of basicEvents) {
-      await this.handleIntent(e, false);
-    }
-
-    for (const e of dataEvents) {
-      await this.handleIntent(e, true);
-    }
-
-    this.lastProcessedBlock = currentBlock;
-  }
-
-  async handleIntent(event: any, withData: boolean) {
-    const { user, target, nonce, timestamp } = event.args;
-    const intentId = `${user}-${nonce.toString()}`;
-
-    if (this.processedIntents.has(intentId)) {
-      console.log("⏭️  Skipping already processed intent:", intentId);
-      return;
-    }
-
-    // Detect contract type
-    const targetLower = target.toLowerCase();
-    const isCounter = COUNTER_ADDRESS && targetLower === COUNTER_ADDRESS.toLowerCase();
-    const isTodo = TODO_ADDRESS && targetLower === TODO_ADDRESS.toLowerCase();
-    const contractType = isCounter ? "Counter" : isTodo ? "Todo" : "Unknown";
-
-    console.log("📨 Intent Received");
-    console.log("  Type:", contractType);
-    console.log("  User:", user);
-    console.log("  Target:", target);
-    console.log("  Nonce:", nonce.toString());
-    if (withData) {
-      const data = event.args.data;
-      if (!data) {
-        console.error("❌ IntentForwardedWithData event missing data field!");
-        return;
-      }
-      console.log("  Data length:", data.length, "bytes");
-      console.log("  Method: Custom (with data)");
-    } else {
-      console.log("  Method:", isCounter ? "increment()" : "Unknown");
-    }
-
-    // Create intent record
-    const intent: Intent = {
-      txHash: event.transactionHash,
-      user: user,
-      target: target,
-      nonce: Number(nonce),
-      timestamp: Number(timestamp || 0n) * 1000, // Convert to milliseconds
-      status: "detected",
-    };
-
-    // Add to history as detected
-    this.addIntentToHistory(intent);
-
-    try {
-      // Update status to executing
-      intent.status = "executing";
-      this.updateIntentInHistory(intent);
-
-      let tx;
-
-      if (withData) {
-        // Todo operations use executeWithData
-        const data = event.args.data;
-        if (!data) {
-          throw new Error("IntentForwardedWithData event missing data field");
+    const arcNetwork = await this.arc.getNetwork();
+    if (Number(arcNetwork.chainId) !== 5042002) throw new Error("Arc RPC has the wrong chain ID");
+    if (await this.arc.getCode(await this.executor.getAddress()) === "0x") throw new Error("ArcExecutor contract is missing");
+    if (!await this.executor.authorizedRelayers(this.signer.address)) throw new Error(`Relayer ${this.signer.address} is not authorized on ArcExecutor`);
+    console.log(`Arc relayer ${this.signer.address}; ${this.sources.length} source network(s)`);
+    for (const source of this.sources) {
+      const network = await source.provider.getNetwork();
+      if (Number(network.chainId) !== source.chainId) throw new Error(`${source.name} RPC has wrong chain ID`);
+      if (await source.provider.getCode(source.gateway) === "0x") throw new Error(`ArcGateway missing on ${source.name} at ${source.gateway}`);
+      const checkpoint = this.checkpoints[String(source.chainId)];
+      if (Number.isInteger(checkpoint)) source.cursor = checkpoint;
+      else if (source.startBlock !== undefined) source.cursor = source.startBlock - 1;
+      else {
+        const latestKnown = this.history.find((item) => item.sourceChainId === source.chainId);
+        if (latestKnown) {
+          const receipt = await source.provider.getTransactionReceipt(latestKnown.txHash);
+          source.cursor = receipt ? receipt.blockNumber - 1 : -1;
         }
-        const methodName = this.detectTodoMethod(data);
-        console.log(`  📝 Todo Operation: ${methodName}`);
-        console.log(`  📦 Calldata: ${data.slice(0, 10)}... (${data.length} bytes)`);
-        tx = await this.executor.executeWithData(
-          user,
-          target,
-          data
-        );
-      } else {
-        // Counter operations use execute
-        console.log("  🔢 Counter Operation: increment()");
-        tx = await this.executor.execute(user, target);
       }
+      const latest = await source.provider.getBlockNumber();
+      if (source.cursor < 0 || latest - source.cursor > 100000) {
+        console.warn(`${source.name}: historical gap is too large for startup. Scanning the latest 5000 blocks; use a START_BLOCK setting for deliberate full backfill. New app submissions also enter the direct queue.`);
+        source.cursor = Math.max(0, latest - 5000);
+      }
+      console.log(`${source.name}: gateway ${source.gateway}, resume after block ${source.cursor}`);
+    }
+    while (true) {
+      try { await this.pollQueued(); } catch (error) { console.error("Direct queue polling failed:", errorMessage(error)); }
+      for (const source of this.sources) {
+        try { await this.poll(source); } catch (error) { console.error(`${source.name} polling failed:`, errorMessage(error)); }
+      }
+      saveJson(healthPath, { updatedAt: Date.now(), sources: this.sources.map((source) => source.chainId), relayer: this.signer.address });
+      await new Promise((resolve) => setTimeout(resolve, this.interval));
+    }
+  }
 
-      console.log("🚀 Executing on Arc:", tx.hash);
-      const receipt = await tx.wait();
+  private async pollQueued() {
+    if (!fs.existsSync(queuePath)) return;
+    for (const filename of fs.readdirSync(queuePath).filter((name) => name.endsWith(".json"))) {
+      const file = path.join(queuePath, filename);
+      const item = loadJson<{ sourceChainId: number; txHash: string } | null>(file, null);
+      if (!item) { fs.unlinkSync(file); continue; }
+      const source = this.sources.find((candidate) => candidate.chainId === item.sourceChainId);
+      if (!source) continue;
+      const receipt = await source.provider.getTransactionReceipt(item.txHash);
+      if (!receipt) continue;
+      if (receipt.status !== 1) { fs.unlinkSync(file); continue; }
+      const parsed = receipt.logs.filter((log) => log.address.toLowerCase() === source.gateway.toLowerCase()).map((log) => {
+        try { return { log, event: source.contract.interface.parseLog(log) }; } catch { return null; }
+      }).find((entry) => entry?.event?.name === "IntentForwarded" || entry?.event?.name === "IntentForwardedWithData");
+      if (!parsed?.event) { console.warn(`No gateway event in ${item.txHash}`); fs.unlinkSync(file); continue; }
+      const event = { args: parsed.event.args, transactionHash: item.txHash } as unknown as EventLog;
+      await this.handle(source, event, parsed.event.name === "IntentForwardedWithData");
+      fs.unlinkSync(file);
+    }
+  }
 
-      // Update intent with execution hash and status
-      intent.status = receipt.status === 1 ? "completed" : "failed";
+  private async poll(source: Source) {
+    const latest = await source.provider.getBlockNumber();
+    while (source.cursor < latest) {
+      const from = source.cursor + 1;
+      const to = Math.min(from + (source.chainId === 10143 ? 99 : 499), latest);
+      const [basic, withData] = await Promise.all([
+        source.contract.queryFilter(source.contract.filters.IntentForwarded(), from, to),
+        source.contract.queryFilter(source.contract.filters.IntentForwardedWithData(), from, to),
+      ]);
+      const events = [...basic.map((event) => ({ event, hasData: false })), ...withData.map((event) => ({ event, hasData: true }))].sort((a, b) => a.event.blockNumber - b.event.blockNumber || a.event.index - b.event.index);
+      for (const { event, hasData } of events) await this.handle(source, event as EventLog, hasData);
+      source.cursor = to;
+      this.checkpoints[String(source.chainId)] = to;
+      saveJson(checkpointPath, this.checkpoints);
+    }
+  }
+
+  private upsert(intent: Intent) {
+    const index = this.history.findIndex((item) => key(item) === key(intent));
+    if (index >= 0) this.history[index] = { ...this.history[index], ...intent };
+    else this.history.push(intent);
+    this.history.sort((a, b) => b.timestamp - a.timestamp);
+    saveJson(historyPath, this.history);
+  }
+
+  private async handle(source: Source, event: EventLog, withData: boolean) {
+    const [user, target] = event.args as unknown as [string, string];
+    const nonce = Number(event.args[withData ? 3 : 2]);
+    const timestamp = Number(event.args[withData ? 4 : 3]) * 1000;
+    const existing = this.history.find((item) => key(item) === `${source.chainId}:${event.transactionHash.toLowerCase()}`);
+    if (existing?.status === "completed" || existing?.status === "failed") return;
+    if (existing?.executionHash) {
+      const receipt = await this.arc.getTransactionReceipt(existing.executionHash);
+      if (receipt) { this.finishFromReceipt(existing, receipt); return; }
+      return; // A submitted Arc transaction may still be pending; never submit twice.
+    }
+    const intent: Intent = existing || { txHash: event.transactionHash, user, target, nonce, timestamp, sourceChainId: source.chainId, status: "detected" };
+    this.upsert(intent);
+    try {
+      if (withData && target.toLowerCase() !== this.todo.toLowerCase()) throw new Error("Data intent targets an unapproved contract");
+      if (!withData && target.toLowerCase() !== this.counter.toLowerCase()) throw new Error("Basic intent targets an unapproved contract");
+      const data = withData ? String(event.args[2]) : undefined;
+      if (withData) {
+        const parsed = todoInterface.parseTransaction({ data: data as string });
+        const allowed = { addTodo: "add", toggleTodo: "toggle", deleteTodo: "delete" } as const;
+        if (!parsed || !(parsed.name in allowed)) throw new Error("Unsupported Todo method");
+        intent.action = allowed[parsed.name as keyof typeof allowed];
+      }
+      intent.status = "executing";
+      this.upsert(intent);
+      const tx = withData ? await this.executor.executeWithData(user, target, data) : await this.executor.execute(user, target);
       intent.executionHash = tx.hash;
-      this.updateIntentInHistory(intent);
-
-      this.processedIntents.add(intentId);
-
-      const statusEmoji = receipt.status === 1 ? "✅" : "❌";
-      console.log(`${statusEmoji} Execution ${receipt.status === 1 ? "completed" : "failed"}\n`);
-    } catch (err: any) {
-      console.error("❌ Execution failed:", err.message);
-      
-      // Update intent status to failed
+      this.upsert(intent);
+      const receipt = await tx.wait();
+      if (!receipt) throw new Error("Arc receipt unavailable");
+      this.finishFromReceipt(intent, receipt);
+    } catch (error) {
       intent.status = "failed";
-      this.updateIntentInHistory(intent);
+      intent.error = errorMessage(error);
+      this.upsert(intent);
+      console.error(`${source.name} intent ${intent.txHash} failed: ${intent.error}`);
     }
   }
 
-  loadProcessedIntents() {
-    try {
-      const data = fs.readFileSync(INTENT_HISTORY_FILE, "utf-8");
-      const intents: Intent[] = JSON.parse(data);
-      
-      // Populate processedIntents set from history
-      intents.forEach((intent) => {
-        const intentId = `${intent.user}-${intent.nonce}`;
-        this.processedIntents.add(intentId);
-      });
-
-      console.log(`📚 Loaded ${intents.length} intents from history\n`);
-    } catch (err: any) {
-      console.warn("⚠️  Could not load intent history:", err.message);
-      // Initialize with empty array
-      fs.writeFileSync(INTENT_HISTORY_FILE, JSON.stringify([], null, 2));
-    }
-  }
-
-  addIntentToHistory(intent: Intent) {
-    try {
-      const data = fs.readFileSync(INTENT_HISTORY_FILE, "utf-8");
-      const intents: Intent[] = JSON.parse(data);
-      
-      // Check if intent already exists (by user-nonce)
-      const intentId = `${intent.user.toLowerCase()}-${intent.nonce}`;
-      const existingIndex = intents.findIndex(
-        (i) => `${i.user.toLowerCase()}-${i.nonce}` === intentId
-      );
-
-      if (existingIndex === -1) {
-        // Add new intent
-        intents.push(intent);
-        // Sort by timestamp (newest first)
-        intents.sort((a, b) => b.timestamp - a.timestamp);
-      }
-
-      fs.writeFileSync(INTENT_HISTORY_FILE, JSON.stringify(intents, null, 2));
-    } catch (err: any) {
-      console.error("❌ Error writing intent history:", err.message);
-    }
-  }
-
-  updateIntentInHistory(intent: Intent) {
-    try {
-      const data = fs.readFileSync(INTENT_HISTORY_FILE, "utf-8");
-      const intents: Intent[] = JSON.parse(data);
-      
-      // Find and update existing intent
-      const intentId = `${intent.user.toLowerCase()}-${intent.nonce}`;
-      const existingIndex = intents.findIndex(
-        (i) => `${i.user.toLowerCase()}-${i.nonce}` === intentId
-      );
-
-      if (existingIndex !== -1) {
-        // Update existing intent
-        intents[existingIndex] = { ...intents[existingIndex], ...intent };
-      } else {
-        // Add if not found
-        intents.push(intent);
-      }
-
-      // Sort by timestamp (newest first)
-      intents.sort((a, b) => b.timestamp - a.timestamp);
-
-      fs.writeFileSync(INTENT_HISTORY_FILE, JSON.stringify(intents, null, 2));
-    } catch (err: any) {
-      console.error("❌ Error updating intent history:", err.message);
-    }
-  }
-
-  /**
-   * Detects which Todo method is being called from calldata
-   * @param data The encoded function call data
-   * @returns The method name or "unknown"
-   */
-  detectTodoMethod(data: string): string {
-    // Function selectors (first 4 bytes of keccak256 hash of function signature)
-    // addTodo(string) = 0x95ffebf5
-    // toggleTodo(uint256) = 0xdc00282c
-    // deleteTodo(uint256) = 0x6e3c6738
-    
-    if (!data || data.length < 10) return "unknown";
-    
-    const selector = data.slice(0, 10).toLowerCase();
-    
-    if (selector === "0x95ffebf5") return "addTodo(string)";
-    if (selector === "0xdc00282c") return "toggleTodo(uint256)";
-    if (selector === "0x6e3c6738") return "deleteTodo(uint256)";
-    
-    return "custom";
-  }
-
-  sleep(ms: number) {
-    return new Promise((r) => setTimeout(r, ms));
+  private finishFromReceipt(intent: Intent, receipt: ethers.TransactionReceipt) {
+    const executorAddress = String(this.executor.target).toLowerCase();
+    const outcome = receipt.logs.filter((log) => log.address.toLowerCase() === executorAddress).map((log) => {
+      try { return this.executor.interface.parseLog(log); } catch { return null; }
+    }).find((log) => log?.name === "IntentExecuted");
+    const success = receipt.status === 1 && outcome?.args[2] === true;
+    intent.status = success ? "completed" : "failed";
+    intent.executionHash = receipt.hash;
+    if (!success) intent.error = "ArcExecutor emitted an unsuccessful execution";
+    this.upsert(intent);
+    console.log(`${intent.status}: ${intent.sourceChainId}:${intent.txHash} -> ${receipt.hash}`);
   }
 }
 
-// -------------------- Run --------------------
-(async () => {
-  try {
-    const relayer = new ArcRelayer();
-    await relayer.start();
-  } catch (err) {
-    console.error("❌ Relayer crashed:", err);
-    process.exit(1);
-  }
-})();
+new ArcRelayer().start().catch((error) => { console.error("Relayer stopped:", errorMessage(error)); process.exitCode = 1; });

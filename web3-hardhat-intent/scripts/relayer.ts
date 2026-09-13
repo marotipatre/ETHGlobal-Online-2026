@@ -49,8 +49,8 @@ async function main() {
       console.log("🚀 Executing on Arc:", tx.hash);
       await tx.wait();
       console.log("✅ Execution confirmed on Arc\n");
-    } catch (err: any) {
-      console.error("❌ Execution failed:", err.message);
+    } catch (err: unknown) {
+      console.error("❌ Execution failed:", err);
     }
   });
 }

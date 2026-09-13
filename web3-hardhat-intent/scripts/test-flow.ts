@@ -111,8 +111,8 @@ async function main() {
         try {
           const count = await counter.count();
           console.log("\n✅ Current counter value:", count.toString());
-        } catch (error: any) {
-          console.error("❌ Error:", error.message);
+        } catch (error: unknown) {
+          console.error("❌ Error:", error);
         }
         break;
 
@@ -131,8 +131,8 @@ async function main() {
           console.log("   Block:", receipt?.blockNumber);
           console.log("\n💡 The relayer should pick this up and execute on Arc");
           console.log("   Check relayer logs for execution status");
-        } catch (error: any) {
-          console.error("❌ Error:", error.message);
+        } catch (error: unknown) {
+          console.error("❌ Error:", error);
         }
         break;
 
@@ -143,14 +143,14 @@ async function main() {
         }
         try {
           console.log("\n⏳ Incrementing counter directly on Arc...");
-          const counterWithSigner = counter.connect(arcWallet) as any;
+          const counterWithSigner = new ethers.Contract(COUNTER_ADDRESS!, COUNTER_ABI, arcWallet);
           const tx = await counterWithSigner.increment();
           console.log("📤 Transaction sent:", tx.hash);
           await tx.wait();
           const newCount = await counter.count();
           console.log("✅ Counter incremented to:", newCount.toString());
-        } catch (error: any) {
-          console.error("❌ Error:", error.message);
+        } catch (error: unknown) {
+          console.error("❌ Error:", error);
         }
         break;
 
@@ -166,13 +166,13 @@ async function main() {
           if (todos.length === 0) {
             console.log("  (No todos yet)");
           } else {
-            todos.forEach((t: any) => {
+            todos.forEach((t: { id: bigint; text: string; completed: boolean }) => {
               const status = t.completed ? "✅" : "⏳";
               console.log(`  ${status} [${t.id}] ${t.text}`);
             });
           }
-        } catch (error: any) {
-          console.error("❌ Error:", error.message);
+        } catch (error: unknown) {
+          console.error("❌ Error:", error);
         }
         break;
 
@@ -192,8 +192,8 @@ async function main() {
           const status = todoItem.completed ? "✅" : "⏳";
           console.log(`\n✅ Todo [${id}]:`);
           console.log(`  ${status} ${todoItem.text}`);
-        } catch (error: any) {
-          console.error("❌ Error:", error.message);
+        } catch (error: unknown) {
+          console.error("❌ Error:", error);
         }
         break;
 
@@ -218,8 +218,8 @@ async function main() {
           console.log("✅ Intent forwarded!");
           console.log("   Block:", receipt?.blockNumber);
           console.log("\n💡 The relayer should pick this up and execute on Arc");
-        } catch (error: any) {
-          console.error("❌ Error:", error.message);
+        } catch (error: unknown) {
+          console.error("❌ Error:", error);
         }
         break;
 
@@ -245,8 +245,8 @@ async function main() {
           console.log("✅ Intent forwarded!");
           console.log("   Block:", receipt?.blockNumber);
           console.log("\n💡 The relayer should pick this up and execute on Arc");
-        } catch (error: any) {
-          console.error("❌ Error:", error.message);
+        } catch (error: unknown) {
+          console.error("❌ Error:", error);
         }
         break;
 
@@ -272,8 +272,8 @@ async function main() {
           console.log("✅ Intent forwarded!");
           console.log("   Block:", receipt?.blockNumber);
           console.log("\n💡 The relayer should pick this up and execute on Arc");
-        } catch (error: any) {
-          console.error("❌ Error:", error.message);
+        } catch (error: unknown) {
+          console.error("❌ Error:", error);
         }
         break;
 
@@ -289,14 +289,14 @@ async function main() {
             break;
           }
           console.log("\n⏳ Adding todo directly on Arc...");
-          const todoWithSigner = todo.connect(arcWallet) as any;
+          const todoWithSigner = new ethers.Contract(TODO_ADDRESS!, TODO_ABI, arcWallet);
           const tx = await todoWithSigner.addTodo(text.trim());
           console.log("📤 Transaction sent:", tx.hash);
           const receipt = await tx.wait();
           const result = await receipt.logs[0].args;
           console.log("✅ Todo added! ID:", result?.id?.toString() || "check logs");
-        } catch (error: any) {
-          console.error("❌ Error:", error.message);
+        } catch (error: unknown) {
+          console.error("❌ Error:", error);
         }
         break;
 
@@ -313,15 +313,15 @@ async function main() {
             break;
           }
           console.log("\n⏳ Toggling todo directly on Arc...");
-          const todoWithSigner = todo.connect(arcWallet) as any;
+          const todoWithSigner = new ethers.Contract(TODO_ADDRESS!, TODO_ABI, arcWallet);
           const tx = await todoWithSigner.toggleTodo(id);
           console.log("📤 Transaction sent:", tx.hash);
           await tx.wait();
           const todoItem = await todo.getTodo(id);
           const status = todoItem.completed ? "✅" : "⏳";
           console.log(`✅ Todo toggled! Status: ${status}`);
-        } catch (error: any) {
-          console.error("❌ Error:", error.message);
+        } catch (error: unknown) {
+          console.error("❌ Error:", error);
         }
         break;
 
@@ -338,13 +338,13 @@ async function main() {
             break;
           }
           console.log("\n⏳ Deleting todo directly on Arc...");
-          const todoWithSigner = todo.connect(arcWallet) as any;
+          const todoWithSigner = new ethers.Contract(TODO_ADDRESS!, TODO_ABI, arcWallet);
           const tx = await todoWithSigner.deleteTodo(id);
           console.log("📤 Transaction sent:", tx.hash);
           await tx.wait();
           console.log("✅ Todo deleted!");
-        } catch (error: any) {
-          console.error("❌ Error:", error.message);
+        } catch (error: unknown) {
+          console.error("❌ Error:", error);
         }
         break;
 
@@ -353,8 +353,8 @@ async function main() {
         try {
           const nonce = await gateway.getNonce(sourceWallet.address);
           console.log("\n✅ Current nonce:", nonce.toString());
-        } catch (error: any) {
-          console.error("❌ Error:", error.message);
+        } catch (error: unknown) {
+          console.error("❌ Error:", error);
         }
         break;
 
@@ -365,8 +365,8 @@ async function main() {
           console.log("\n💰 Wallet Balances:");
           console.log("  Source Chain:", ethers.formatEther(sourceBalance), "ETH");
           console.log("  Arc Chain:", ethers.formatEther(arcBalance), "USDC");
-        } catch (error: any) {
-          console.error("❌ Error:", error.message);
+        } catch (error: unknown) {
+          console.error("❌ Error:", error);
         }
         break;
 

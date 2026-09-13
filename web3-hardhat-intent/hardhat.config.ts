@@ -30,8 +30,15 @@ const config: HardhatUserConfig = {
       gasPrice: "auto",
     },
     monadTestnet: {
-      url: "https://testnet-rpc.monad.xyz",
+      url: process.env.MONAD_TESTNET_RPC_URL || "https://testnet-rpc.monad.xyz",
       chainId: 10143,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      timeout: 120000,
+      gasPrice: "auto",
+    },
+    baseSepolia: {
+      url: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
+      chainId: 84532,
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       timeout: 120000,
       gasPrice: "auto",
