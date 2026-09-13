@@ -58,7 +58,11 @@ async function redisSave(key: string, value: unknown) {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return;
   try {
-    await fetch(`${url}/set/${key}/${encodeURIComponent(JSON.stringify(value))}`, { method: "GET", headers: { Authorization: `Bearer ${token}` } });
+    await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(["SET", key, JSON.stringify(value)]),
+    });
   } catch { /* Redis unavailable — local file is the source of truth */ }
 }
 async function redisGetQueue(): Promise<{ sourceChainId: number; txHash: string }[]> {
