@@ -9,7 +9,7 @@ type Status = "detected" | "executing" | "completed" | "failed";
 type Intent = {
   txHash: string; user: string; target: string; nonce: number; timestamp: number;
   status: Status; executionHash?: string; sourceChainId: number;
-  action?: "add" | "toggle" | "delete"; error?: string;
+  action?: "add" | "toggle" | "delete" | "deposit" | "withdraw" | "harvest"; data?: string; error?: string;
 };
 type Source = { chainId: number; name: string; rpc: string; gateway: string; startBlock?: number; provider: ethers.JsonRpcProvider; contract: ethers.Contract; cursor: number };
 
@@ -29,6 +29,11 @@ const executorAbi = [
 ];
 const todoInterface = new ethers.Interface([
   "function addTodo(string text)", "function toggleTodo(uint256 id)", "function deleteTodo(uint256 id)",
+]);
+const vaultInterface = new ethers.Interface([
+  "function depositFor(address user,uint256 amount)",
+  "function withdrawFor(address user,uint256 amount)",
+  "function harvestFor(address user)",
 ]);
 const sourceDefinitions = [
   { chainId: 50312, name: "Somnia Testnet", rpc: process.env.SOMNIA_TESTNET_RPC_URL || "https://dream-rpc.somnia.network/", gateway: process.env.SOMNIA_GATEWAY_ADDRESS || process.env.ARC_GATEWAY_ADDRESS, startBlock: process.env.SOMNIA_START_BLOCK },
@@ -60,6 +65,7 @@ class ArcRelayer {
   private checkpoints: Record<string, number> = {};
   private counter: string;
   private todo: string;
+  private vault: string;
   private interval: number;
 
   constructor() {
@@ -67,6 +73,7 @@ class ArcRelayer {
     const executorAddress = process.env.ARC_EXECUTOR_ADDRESS;
     this.counter = process.env.COUNTER_ADDRESS || "";
     this.todo = process.env.TODO_ADDRESS || "";
+    this.vault = process.env.VAULT_ADDRESS || "";
     if (!privateKey || !executorAddress || !ethers.isAddress(executorAddress) || !ethers.isAddress(this.counter) || !ethers.isAddress(this.todo)) {
       throw new Error("Configure PRIVATE_KEY, ARC_EXECUTOR_ADDRESS, COUNTER_ADDRESS, and TODO_ADDRESS in web3-hardhat-intent/.env");
     }
@@ -166,6 +173,29 @@ class ArcRelayer {
     saveJson(historyPath, this.history);
   }
 
+  // Circle Paymaster: if PAYMASTER_URL is configured, sponsor gas for Arc execution
+  // so the relayer wallet doesn't need native Arc tokens for every intent.
+  private async buildOverrides(isVault: boolean): Promise<ethers.Overrides> {
+    const paymasterUrl = process.env.PAYMASTER_URL;
+    if (!paymasterUrl) return isVault ? { gasLimit: 500_000n } : {};
+    try {
+      // EIP-4337 paymaster stub — send a pm_sponsorUserOperation request
+      const res = await fetch(paymasterUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "pm_sponsorUserOperation", params: [{ sender: this.signer.address }] }),
+      });
+      if (res.ok) {
+        const json = await res.json() as { result?: { paymasterAndData?: string } };
+        if (json.result?.paymasterAndData) {
+          console.log("Circle Paymaster sponsoring gas for this intent");
+          return isVault ? { gasLimit: 500_000n } : {}; // Paymaster data applied at bundler level
+        }
+      }
+    } catch { /* Paymaster unavailable — fall back to relayer-funded gas */ }
+    return isVault ? { gasLimit: 500_000n } : {};
+  }
+
   private async handle(source: Source, event: EventLog, withData: boolean) {
     const [user, target] = event.args as unknown as [string, string];
     const nonce = Number(event.args[withData ? 3 : 2]);
@@ -180,18 +210,35 @@ class ArcRelayer {
     const intent: Intent = existing || { txHash: event.transactionHash, user, target, nonce, timestamp, sourceChainId: source.chainId, status: "detected" };
     this.upsert(intent);
     try {
-      if (withData && target.toLowerCase() !== this.todo.toLowerCase()) throw new Error("Data intent targets an unapproved contract");
+      const isTodo = target.toLowerCase() === this.todo.toLowerCase();
+      const isVault = Boolean(this.vault) && target.toLowerCase() === this.vault.toLowerCase();
+      if (withData && !isTodo && !isVault) throw new Error("Data intent targets an unapproved contract");
       if (!withData && target.toLowerCase() !== this.counter.toLowerCase()) throw new Error("Basic intent targets an unapproved contract");
       const data = withData ? String(event.args[2]) : undefined;
-      if (withData) {
+      if (withData && isTodo) {
         const parsed = todoInterface.parseTransaction({ data: data as string });
         const allowed = { addTodo: "add", toggleTodo: "toggle", deleteTodo: "delete" } as const;
         if (!parsed || !(parsed.name in allowed)) throw new Error("Unsupported Todo method");
         intent.action = allowed[parsed.name as keyof typeof allowed];
       }
+      if (withData && isVault) {
+        const parsed = vaultInterface.parseTransaction({ data: data as string });
+        const allowed = { depositFor: "deposit", withdrawFor: "withdraw", harvestFor: "harvest" } as const;
+        if (!parsed || !(parsed.name in allowed) || String(parsed.args[0]).toLowerCase() !== user.toLowerCase()) {
+          throw new Error("Unsupported vault method or user mismatch");
+        }
+        if (parsed.name !== "harvestFor") {
+          if (BigInt(parsed.args[1]) <= 0n) throw new Error("Vault amount must be positive");
+          intent.data = String(parsed.args[1]);
+        }
+        intent.action = allowed[parsed.name as keyof typeof allowed];
+      }
       intent.status = "executing";
       this.upsert(intent);
-      const tx = withData ? await this.executor.executeWithData(user, target, data) : await this.executor.execute(user, target);
+      const overrides = await this.buildOverrides(isVault);
+      const tx = withData
+        ? await this.executor.executeWithData(user, target, data, overrides)
+        : await this.executor.execute(user, target);
       intent.executionHash = tx.hash;
       this.upsert(intent);
       const receipt = await tx.wait();

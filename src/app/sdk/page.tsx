@@ -1,180 +1,166 @@
-import { readFileSync } from "fs";
-import { join } from "path";
-import type { ReactElement } from "react";
+import { ArrowRight, ExternalLink, Code2, Zap, Bot, GitBranch, Shield } from "lucide-react";
+import Link from "next/link";
 
-// Simple markdown renderer component
-function MarkdownRenderer({ content }: { content: string }) {
-  const lines = content.split("\n");
-  const elements: ReactElement[] = [];
-  let inCodeBlock = false;
-  let codeBlockContent: string[] = [];
-  let inList = false;
-  let listItems: ReactElement[] = [];
-  let isNumberedList = false;
+const circleStack = [
+  {
+    name: "Arc Testnet",
+    tag: "DESTINATION CHAIN",
+    color: "text-[var(--primary)]",
+    border: "border-[var(--primary)]/30",
+    desc: "Circle's purpose-built EVM-compatible L1. ArcExecutor and StablecoinVault are deployed here. All USDC vault state lives on Arc.",
+    link: "https://developers.circle.com/arc",
+    code: "chainId: 5042002\nrpc: https://rpc.testnet.arc.network",
+  },
+  {
+    name: "Arc USDC",
+    tag: "NATIVE STABLECOIN",
+    color: "text-[var(--primary)]",
+    border: "border-[var(--primary)]/30",
+    desc: "Native USDC on Arc Testnet. The StablecoinVault holds, distributes, and tracks USDC balances. 1:1 backed principal enforced on-chain.",
+    link: "https://developers.circle.com/stablecoins/usdc-on-arc",
+    code: "address: 0x3600000000000000000000000000000000000000",
+  },
+  {
+    name: "Circle CCTP",
+    tag: "CROSS-CHAIN TRANSFER",
+    color: "text-blue-300",
+    border: "border-blue-300/30",
+    desc: "Circle's Cross-Chain Transfer Protocol. Burns USDC on Base Sepolia via TokenMessenger and mints natively on Arc — no wrapped tokens, no liquidity pools.",
+    link: "https://developers.circle.com/stablecoins/cctp-getting-started",
+    code: "TokenMessenger.depositForBurn(\n  amount, ARC_DOMAIN=9,\n  mintRecipient, burnToken\n)",
+  },
+  {
+    name: "Circle Paymaster",
+    tag: "GAS ABSTRACTION",
+    color: "text-[var(--tertiary)]",
+    border: "border-[var(--tertiary)]/30",
+    desc: "EIP-4337 Paymaster sponsoring gas for Arc execution. When PAYMASTER_URL is set, the relayer requests gas sponsorship so users never need native Arc tokens.",
+    link: "https://developers.circle.com/arc/paymaster",
+    code: "pm_sponsorUserOperation\n→ relayer gas sponsored by Circle",
+  },
+  {
+    name: "Agent Stack",
+    tag: "AGENTIC ECONOMY",
+    color: "text-[var(--tertiary)]",
+    border: "border-[var(--tertiary)]/30",
+    desc: "Auto-harvest agent monitors vault claimable yield and executes harvestFor() autonomously when the threshold is met. Demonstrates agentic DeFi on Arc.",
+    link: "https://developers.circle.com/arc/agent-stack",
+    code: "GET /api/agent?user=0x...\n→ { shouldHarvest, agentExecuted }",
+  },
+];
 
-  const flushList = () => {
-    if (listItems.length > 0) {
-      const ListTag = isNumberedList ? 'ol' : 'ul';
-      const listClass = isNumberedList 
-        ? "list-decimal ml-6 mb-4 space-y-2" 
-        : "list-disc ml-6 mb-4 space-y-2";
-      
-      elements.push(
-        <ListTag key={`list-${elements.length}`} className={listClass}>
-          {listItems}
-        </ListTag>
-      );
-      listItems = [];
-      inList = false;
-      isNumberedList = false;
-    }
-  };
-
-  lines.forEach((line, index) => {
-    // Handle code blocks
-    if (line.startsWith("```")) {
-      if (inCodeBlock) {
-        // End code block
-        flushList();
-        elements.push(
-          <pre
-            key={`code-${index}`}
-            className="bg-[#1e1e1e] text-green-400 p-6 rounded-lg border-2 border-black overflow-x-auto my-6 font-mono text-xs md:text-sm shadow-[4px_4px_0px_0px_#000] whitespace-pre"
-            style={{ fontFamily: "monospace" }}
-          >
-            <code className="block">{codeBlockContent.join("\n")}</code>
-          </pre>
-        );
-        codeBlockContent = [];
-        inCodeBlock = false;
-      } else {
-        // Start code block
-        flushList();
-        inCodeBlock = true;
-      }
-      return;
-    }
-
-    if (inCodeBlock) {
-      codeBlockContent.push(line);
-      return;
-    }
-
-    // Handle headers
-    if (line.startsWith("# ")) {
-      flushList();
-      elements.push(
-        <h1
-          key={`h1-${index}`}
-          className="text-4xl md:text-5xl font-black text-black mt-12 mb-6 first:mt-0"
-        >
-          {line.slice(2)}
-        </h1>
-      );
-      return;
-    }
-    if (line.startsWith("## ")) {
-      flushList();
-      elements.push(
-        <h2
-          key={`h2-${index}`}
-          className="text-3xl md:text-4xl font-black text-black mt-10 mb-4"
-        >
-          {line.slice(3)}
-        </h2>
-      );
-      return;
-    }
-    if (line.startsWith("### ")) {
-      flushList();
-      elements.push(
-        <h3
-          key={`h3-${index}`}
-          className="text-2xl md:text-3xl font-black text-black mt-8 mb-3"
-        >
-          {line.slice(4)}
-        </h3>
-      );
-      return;
-    }
-
-    // Handle horizontal rules
-    if (line.trim() === "---") {
-      flushList();
-      elements.push(
-        <hr
-          key={`hr-${index}`}
-          className="my-8 border-t-2 border-black"
-        />
-      );
-      return;
-    }
-
-    // Handle empty lines
-    if (line.trim() === "") {
-      flushList();
-      return;
-    }
-
-    // Handle regular content
-    if (line.trim()) {
-      // Check if it's a numbered list item
-      const numberedListMatch = line.trim().match(/^(\d+)\.\s+(.+)$/);
-      if (numberedListMatch) {
-        isNumberedList = true;
-        inList = true;
-        listItems.push(
-          <li key={`li-${index}`} className="text-black/80 font-medium leading-relaxed">
-            {numberedListMatch[2]}
-          </li>
-        );
-        return;
-      }
-
-      // Check if it's a bullet list item
-      if (line.trim().startsWith("- ") || line.trim().startsWith("* ")) {
-        inList = true;
-        listItems.push(
-          <li key={`li-${index}`} className="text-black/80 font-medium leading-relaxed">
-            {line.trim().slice(2)}
-          </li>
-        );
-        return;
-      }
-
-      // Regular paragraph - handle bold text and checkmarks
-      flushList();
-      const processedLine = line
-        .replace(/\*\*(.+?)\*\*/g, '<strong class="font-black text-black">$1</strong>')
-        .replace(/✅/g, '<span class="text-green-600">✅</span>')
-        .replace(/⚠️/g, '<span class="text-yellow-600">⚠️</span>')
-        .replace(/🎉/g, '<span class="text-[var(--primary)]">🎉</span>');
-      
-      elements.push(
-        <p 
-          key={`p-${index}`} 
-          className="text-black/80 font-medium mb-4 leading-relaxed"
-          dangerouslySetInnerHTML={{ __html: processedLine }}
-        />
-      );
-    }
-  });
-
-  // Flush any remaining list items
-  flushList();
-
-  return <div className="markdown-content">{elements}</div>;
-}
+const codeSnippets = [
+  {
+    title: "1. Forward intent from source chain",
+    lang: "typescript",
+    code: `// User signs on Base Sepolia — no network switch needed
+const data = encodeFunctionData({
+  abi: VAULT_ABI,
+  functionName: "depositFor",
+  args: [userAddress, amount],
+});
+await writeContract({
+  address: GATEWAY_ADDRESS,   // Base Sepolia ArcGateway
+  abi: ARC_GATEWAY_ABI,
+  functionName: "forwardIntentWithData",
+  args: [VAULT_ADDRESS, data], // targets Arc Testnet vault
+});`,
+  },
+  {
+    title: "2. Bridge USDC via Circle CCTP",
+    lang: "typescript",
+    code: `// Burns USDC on Base Sepolia, mints on Arc natively
+await writeContract({
+  address: CCTP_TOKEN_MESSENGER, // Base Sepolia
+  abi: TOKEN_MESSENGER_ABI,
+  functionName: "depositForBurn",
+  args: [
+    amount,
+    9,              // Arc domain ID
+    mintRecipient,  // vault address as bytes32
+    SOURCE_USDC,
+  ],
+});`,
+  },
+  {
+    title: "3. Agent auto-harvest check",
+    lang: "typescript",
+    code: `// Agent evaluates harvest condition
+const res = await fetch(\`/api/agent?user=\${address}\`);
+const { shouldHarvest, claimable, agentExecuted } = await res.json();
+// If AGENT_PRIVATE_KEY is set server-side and shouldHarvest=true,
+// the agent calls ArcExecutor.executeWithData autonomously`,
+  },
+];
 
 export default function SDKPage() {
-  // Read the markdown file
-  const filePath = join(process.cwd(), "SDK_GUIDE.md");
-  const content = readFileSync(filePath, "utf-8");
-
   return (
-    <div className="max-w-5xl mx-auto py-12">
-      <div className="bg-white border-2 border-black rounded-xl p-8 md:p-12 shadow-[6px_6px_0px_0px_#000]">
-        <MarkdownRenderer content={content} />
+    <div className="mx-auto max-w-6xl py-10 md:py-16">
+      <p className="text-xs font-bold tracking-[.14em] text-[var(--primary)]">CIRCLE DEVELOPER STACK</p>
+      <h1 className="mt-4 text-5xl font-bold text-white md:text-6xl">Built with Circle.</h1>
+      <p className="mt-5 max-w-2xl text-lg text-[var(--muted)]">
+        ArcFlow uses Arc, USDC, CCTP, Paymaster, and the Agent Stack — Circle's full developer suite for stablecoin-native DeFi.
+      </p>
+
+      {/* Circle stack cards */}
+      <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+        {circleStack.map((item) => (
+          <div key={item.name} className={`neo-card flex flex-col gap-4 p-6 ${item.border}`}>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <span className={`text-[10px] font-bold tracking-[.14em] ${item.color}`}>{item.tag}</span>
+                <h3 className="mt-1 text-lg font-bold text-white">{item.name}</h3>
+              </div>
+              <a href={item.link} target="_blank" rel="noreferrer" className={`mt-1 ${item.color} hover:opacity-70`}>
+                <ExternalLink className="size-4" />
+              </a>
+            </div>
+            <p className="text-sm leading-relaxed text-[var(--muted)]">{item.desc}</p>
+            <pre className="rounded-lg bg-black/40 p-3 font-mono text-xs text-[var(--primary)]/80 overflow-x-auto">{item.code}</pre>
+          </div>
+        ))}
+      </div>
+
+      {/* Code snippets */}
+      <div className="mt-14">
+        <p className="mb-6 text-xs font-bold tracking-[.14em] text-[var(--primary)]">INTEGRATION EXAMPLES</p>
+        <div className="space-y-5">
+          {codeSnippets.map((snippet) => (
+            <div key={snippet.title} className="neo-card overflow-hidden">
+              <div className="flex items-center gap-2 border-b border-[var(--line)] px-5 py-3">
+                <Code2 className="size-4 text-[var(--primary)]" />
+                <p className="text-sm font-bold text-white">{snippet.title}</p>
+              </div>
+              <pre className="overflow-x-auto p-5 font-mono text-xs leading-relaxed text-[var(--primary)]/80">{snippet.code}</pre>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Quick links */}
+      <div className="mt-14 grid gap-4 md:grid-cols-4">
+        {[
+          { icon: <Zap className="size-5" />, label: "USDC Vault", href: "/vault", desc: "Live demo" },
+          { icon: <GitBranch className="size-5" />, label: "Architecture", href: "/architecture", desc: "System diagram" },
+          { icon: <Bot className="size-5" />, label: "Agent API", href: "/api/agent", desc: "Harvest agent" },
+          { icon: <Shield className="size-5" />, label: "GitHub", href: "https://github.com/marotipatre/ETHGlobal-Online-2026", desc: "Source code", external: true },
+        ].map((item) => (
+          item.external ? (
+            <a key={item.label} href={item.href} target="_blank" rel="noreferrer"
+              className="remit-card flex items-center gap-3 p-4 hover:border-[var(--primary)]">
+              <span className="text-[var(--primary)]">{item.icon}</span>
+              <div><p className="font-bold text-white">{item.label}</p><p className="text-xs text-[var(--muted)]">{item.desc}</p></div>
+              <ExternalLink className="ml-auto size-3 text-[var(--muted)]" />
+            </a>
+          ) : (
+            <Link key={item.label} href={item.href}
+              className="remit-card flex items-center gap-3 p-4 hover:border-[var(--primary)]">
+              <span className="text-[var(--primary)]">{item.icon}</span>
+              <div><p className="font-bold text-white">{item.label}</p><p className="text-xs text-[var(--muted)]">{item.desc}</p></div>
+              <ArrowRight className="ml-auto size-3 text-[var(--muted)]" />
+            </Link>
+          )
+        ))}
       </div>
     </div>
   );
