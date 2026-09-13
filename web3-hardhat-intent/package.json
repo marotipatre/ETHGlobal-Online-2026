@@ -1,0 +1,27 @@
+{
+  "name": "fundstx-web3-intent",
+  "version": "1.0.0",
+  "description": "Cross-chain intent architecture with Arc Chain and Ethereum",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:arc": "hardhat run scripts/deploy-arc.ts --network arcTestnet",
+    "deploy:gateway": "hardhat run scripts/deploy-gateway.ts --network somniaTestnet",
+    "deploy:localhost": "hardhat run scripts/deploy-local.ts --network localhost",
+    "setup:relayer": "hardhat run scripts/setup-relayer.ts --network arcTestnet",
+    "relayer": "ts-node relayer/index.ts",
+    "test-flow": "ts-node scripts/test-flow.ts"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "@types/node": "^20.10.0",
+    "hardhat": "^2.28.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "ethers": "^6.9.0",
+    "viem": "^2.0.0"
+  }
+}
