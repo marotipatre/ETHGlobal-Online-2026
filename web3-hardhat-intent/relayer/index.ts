@@ -193,7 +193,8 @@ class ArcRelayer {
     const latest = await source.provider.getBlockNumber();
     while (source.cursor < latest) {
       const from = source.cursor + 1;
-      const to = Math.min(from + (source.chainId === 10143 ? 99 : 499), latest);
+      const chunkSize = source.chainId === 10143 ? 99 : source.chainId === 84532 ? 9 : 499;
+      const to = Math.min(from + chunkSize, latest);
       const [basic, withData] = await Promise.all([
         source.contract.queryFilter(source.contract.filters.IntentForwarded(), from, to),
         source.contract.queryFilter(source.contract.filters.IntentForwardedWithData(), from, to),
