@@ -56,6 +56,7 @@ a, button, input { transition: color .18s ease, background-color .18s ease, bord
 .neo-card.bg-white, .neo-card .bg-white { background-color: var(--surface) !important; }
 .neo-card .bg-gray-50, .neo-card .bg-gray-50\/50, .neo-card .bg-gray-100 { background-color: #ffffff08 !important; }
 .neo-card .text-black { color: var(--foreground) !important; }
+.neo-card button.text-black { color: #000 !important; }
 .neo-card .text-black\/80 { color: #f4f7f3cc !important; }
 .neo-card .text-black\/70, .neo-card .text-black\/60 { color: var(--muted) !important; }
 .neo-card .text-black\/40, .neo-card .text-black\/20 { color: #f4f7f344 !important; }

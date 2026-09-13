@@ -53,6 +53,30 @@ function saveJson(file: string, value: unknown) {
   fs.writeFileSync(temporary, JSON.stringify(value, null, 2));
   fs.renameSync(temporary, file);
 }
+async function redisSave(key: string, value: unknown) {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return;
+  try {
+    await fetch(`${url}/set/${key}`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(JSON.stringify(value)) });
+  } catch { /* Redis unavailable — local file is the source of truth */ }
+}
+async function redisGetQueue(): Promise<{ sourceChainId: number; txHash: string }[]> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return [];
+  try {
+    const res = await fetch(`${url}/keys/intent-queue:*`, { headers: { Authorization: `Bearer ${token}` } });
+    const json = await res.json() as { result?: string[] };
+    if (!json.result?.length) return [];
+    const items = await Promise.all(json.result.map(async (k) => {
+      const r = await fetch(`${url}/getdel/${k}`, { headers: { Authorization: `Bearer ${token}` } });
+      const j = await r.json() as { result?: string | null };
+      return j.result ? JSON.parse(j.result) as { sourceChainId: number; txHash: string } : null;
+    }));
+    return items.filter(Boolean) as { sourceChainId: number; txHash: string }[];
+  } catch { return []; }
+}
 function key(intent: Pick<Intent, "sourceChainId" | "txHash">) { return `${intent.sourceChainId}:${intent.txHash.toLowerCase()}`; }
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }
 
@@ -123,11 +147,28 @@ class ArcRelayer {
         try { await this.poll(source); } catch (error) { console.error(`${source.name} polling failed:`, errorMessage(error)); }
       }
       saveJson(healthPath, { updatedAt: Date.now(), sources: this.sources.map((source) => source.chainId), relayer: this.signer.address });
+      redisSave("relayer-health", { updatedAt: Date.now(), sources: this.sources.map((source) => source.chainId), relayer: this.signer.address }).catch(() => {});
       await new Promise((resolve) => setTimeout(resolve, this.interval));
     }
   }
 
   private async pollQueued() {
+    // Poll Redis queue (from Vercel API) first
+    const redisItems = await redisGetQueue();
+    for (const item of redisItems) {
+      const source = this.sources.find((candidate) => candidate.chainId === item.sourceChainId);
+      if (!source) continue;
+      const receipt = await source.provider.getTransactionReceipt(item.txHash);
+      if (!receipt || receipt.status !== 1) continue;
+      const parsed = receipt.logs.filter((log) => log.address.toLowerCase() === source.gateway.toLowerCase()).map((log) => {
+        try { return { log, event: source.contract.interface.parseLog(log) }; } catch { return null; }
+      }).find((entry) => entry?.event?.name === "IntentForwarded" || entry?.event?.name === "IntentForwardedWithData");
+      if (parsed?.event) {
+        const event = { args: parsed.event.args, transactionHash: item.txHash } as unknown as EventLog;
+        await this.handle(source, event, parsed.event.name === "IntentForwardedWithData");
+      }
+    }
+    // Poll local filesystem queue
     if (!fs.existsSync(queuePath)) return;
     for (const filename of fs.readdirSync(queuePath).filter((name) => name.endsWith(".json"))) {
       const file = path.join(queuePath, filename);
@@ -171,6 +212,7 @@ class ArcRelayer {
     else this.history.push(intent);
     this.history.sort((a, b) => b.timestamp - a.timestamp);
     saveJson(historyPath, this.history);
+    redisSave("intent-history", this.history).catch(() => {});
   }
 
   // Circle Paymaster: if PAYMASTER_URL is configured, sponsor gas for Arc execution

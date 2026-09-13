@@ -6,8 +6,26 @@ import { ARC_GATEWAY_ABI } from "@/lib/contracts";
 
 export const dynamic = "force-dynamic";
 
+async function redisGet(key: string): Promise<unknown | null> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  const res = await fetch(`${url}/get/${key}`, { headers: { Authorization: `Bearer ${token}` } });
+  const json = await res.json() as { result?: string | null };
+  return json.result ? JSON.parse(json.result) : null;
+}
+
+async function redisSet(key: string, value: unknown) {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return;
+  await fetch(`${url}/set/${key}`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(JSON.stringify(value)) });
+}
+
 export async function GET() {
   try {
+    const redis = await redisGet("intent-history");
+    if (redis) return Response.json(redis, { headers: { "Cache-Control": "no-store" } });
     const content = await readFile(join(process.cwd(), "public", "intent-history.json"), "utf8");
     return Response.json(JSON.parse(content), { headers: { "Cache-Control": "no-store" } });
   } catch {
@@ -40,10 +58,9 @@ export async function POST(request: Request) {
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, `${sourceChainId}-${txHash.toLowerCase()}.json`), JSON.stringify({ sourceChainId, txHash }), { flag: "wx" });
   } catch (error) {
-    // On Vercel/read-only filesystems the queue write is unavailable.
-    // The relayer falls back to source-chain log polling automatically.
+    // On Vercel/read-only filesystems fall back to Redis queue
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
-      console.warn("Intent queue write unavailable (read-only fs or duplicate):", (error as NodeJS.ErrnoException).code);
+      await redisSet(`intent-queue:${sourceChainId}:${txHash.toLowerCase()}`, { sourceChainId, txHash });
     }
   }
   return Response.json({ queued: true }, { status: 202 });

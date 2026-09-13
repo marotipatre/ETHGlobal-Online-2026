@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# accidental nested absolute-path directories created by Next.js turbopack
+/Crypto/
+
 # production
 /build
 
