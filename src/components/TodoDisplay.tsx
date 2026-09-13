@@ -1,24 +1,23 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useTodo } from "@/hooks/useTodo";
 import { RefreshCw, CheckCircle2, Circle, Trash2, Loader2, AlertCircle } from "lucide-react";
 import { useTodoIntent } from "@/hooks/useTodoIntent";
 import { useWallet } from "@/hooks/useWallet";
-import { somniaTestnet } from "@/config/chains";
 
 export function TodoDisplay() {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false);
   const { todos, isLoading, error, refetch } = useTodo();
-  const { forwardToggleTodo, forwardDeleteTodo, isForwarding } = useTodoIntent();
+  const { forwardToggleTodo, forwardDeleteTodo, isForwarding, activeIntent, relayerOnline } = useTodoIntent();
   const { wallet } = useWallet();
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
+    if (activeIntent?.status === "completed") void refetch();
+  }, [activeIntent?.status, activeIntent?.executionHash, refetch]);
 
   const handleToggle = async (id: bigint) => {
-    if (!wallet.isConnected || !wallet.isOnSomnia) {
+    if (!wallet.isConnected || !wallet.isOnSupportedSource) {
       return;
     }
     try {
@@ -29,7 +28,7 @@ export function TodoDisplay() {
   };
 
   const handleDelete = async (id: bigint) => {
-    if (!wallet.isConnected || !wallet.isOnSomnia) {
+    if (!wallet.isConnected || !wallet.isOnSupportedSource) {
       return;
     }
     try {
@@ -70,13 +69,15 @@ export function TodoDisplay() {
         </div>
       )}
 
-      {mounted && wallet.isConnected && !wallet.isOnSomnia && (
+      {mounted && wallet.isConnected && !wallet.isOnSupportedSource && (
         <div className="mb-4 rounded-lg border border-yellow-300/30 bg-yellow-300/10 p-4">
           <p className="text-sm font-bold text-yellow-200">
-            Switch to {somniaTestnet.name} to toggle or delete todos
+            Choose a configured source network to toggle or delete todos
           </p>
         </div>
       )}
+
+      {mounted && wallet.isConnected && wallet.isOnSupportedSource && !relayerOnline && <p className="mb-4 rounded-lg border border-yellow-300/30 bg-yellow-300/10 p-4 text-sm text-yellow-200">The relayer is offline. Toggle and delete are paused until it resumes.</p>}
 
       {error ? (
         <div className="rounded-lg border border-[var(--danger)]/40 bg-[var(--danger)]/10 p-4">
@@ -95,7 +96,7 @@ export function TodoDisplay() {
               <p className="font-medium text-[var(--muted)]">No todos yet. Add one to get started!</p>
             </div>
           ) : (
-            todos.map((todo) => (
+            todos.map((todo, index) => (
               <div
                 key={todo.id.toString()}
                 className={`flex items-center gap-3 rounded-lg border border-[var(--line)] p-4 transition-all hover:border-[var(--primary)] ${
@@ -105,8 +106,8 @@ export function TodoDisplay() {
                 }`}
               >
                 <button
-                  onClick={() => handleToggle(todo.id)}
-                  disabled={isForwarding || !wallet.isConnected || !wallet.isOnSomnia}
+                  onClick={() => handleToggle(BigInt(index))}
+                  disabled={isForwarding || !wallet.isConnected || !wallet.isOnSupportedSource || !relayerOnline}
                   className="shrink-0 rounded-lg border border-[var(--line)] p-2 text-[var(--primary)] hover:border-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-50"
                   title={todo.completed ? "Mark as incomplete" : "Mark as complete"}
                 >
@@ -124,8 +125,8 @@ export function TodoDisplay() {
                   {todo.text}
                 </span>
                 <button
-                  onClick={() => handleDelete(todo.id)}
-                  disabled={isForwarding || !wallet.isConnected || !wallet.isOnSomnia}
+                  onClick={() => handleDelete(BigInt(index))}
+                  disabled={isForwarding || !wallet.isConnected || !wallet.isOnSupportedSource || !relayerOnline}
                   className="shrink-0 rounded-lg border border-[var(--danger)]/50 bg-[var(--danger)]/10 p-2 transition-colors hover:bg-[var(--danger)]/20 disabled:cursor-not-allowed disabled:opacity-50"
                   title="Delete todo"
                 >

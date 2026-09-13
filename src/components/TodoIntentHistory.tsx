@@ -3,6 +3,7 @@
 import { useTodoIntent, type TodoIntentStatus } from "@/hooks/useTodoIntent";
 import { Clock, CheckCircle2, XCircle, Loader2, ExternalLink, RefreshCw, Plus, ToggleLeft, Trash2 } from "lucide-react";
 import { somniaTestnet, arcTestnet } from "@/config/chains";
+import { getSourceNetwork } from "@/config/sourceChains";
 
 function getStatusIcon(status: TodoIntentStatus) {
   switch (status) {
@@ -37,7 +38,7 @@ function getStatusBadgeColor(status: TodoIntentStatus) {
   }
 }
 
-function getActionIcon(action: "add" | "toggle" | "delete") {
+function getActionIcon(action: "add" | "toggle" | "delete" | "unknown") {
   switch (action) {
     case "add":
       return <Plus className="w-4 h-4 text-green-600" />;
@@ -45,10 +46,12 @@ function getActionIcon(action: "add" | "toggle" | "delete") {
       return <ToggleLeft className="w-4 h-4 text-blue-600" />;
     case "delete":
       return <Trash2 className="w-4 h-4 text-red-600" />;
+    default:
+      return <Clock className="w-4 h-4 text-[var(--muted)]" />;
   }
 }
 
-function getActionBadgeColor(action: "add" | "toggle" | "delete") {
+function getActionBadgeColor(action: "add" | "toggle" | "delete" | "unknown") {
   switch (action) {
     case "add":
       return "bg-green-100 text-green-800 border-green-500";
@@ -56,13 +59,15 @@ function getActionBadgeColor(action: "add" | "toggle" | "delete") {
       return "bg-blue-100 text-blue-800 border-blue-500";
     case "delete":
       return "bg-red-100 text-red-800 border-red-500";
+    default:
+      return "bg-white/10 text-[var(--muted)] border-[var(--line)]";
   }
 }
 
 export function TodoIntentHistory() {
   const { intents, isLoadingHistory } = useTodoIntent();
 
-  if (isLoadingHistory) {
+  if (isLoadingHistory && intents.length === 0) {
     return (
       <div className="neo-card p-8 bg-white">
         <h3 className="font-black text-xl text-black mb-4 flex items-center gap-2">
@@ -70,7 +75,7 @@ export function TodoIntentHistory() {
           Todo Intent History
         </h3>
         <p className="text-black/60 text-center py-8">
-          Loading intent history from blockchain...
+          Loading intent history...
         </p>
       </div>
     );
@@ -112,7 +117,7 @@ export function TodoIntentHistory() {
                   Timestamp
                 </th>
                 <th className="px-4 py-3 text-left font-black text-sm border-r-2 border-white/20">
-                  Somnia TX
+                  Source TX
                 </th>
                 <th className="px-4 py-3 text-left font-black text-sm border-r-2 border-white/20">
                   Arc Execution
@@ -168,7 +173,7 @@ export function TodoIntentHistory() {
                   {/* Somnia TX */}
                   <td className="px-4 py-3 border-r-2 border-black/10">
                     <a
-                      href={`${somniaTestnet.blockExplorers.default.url}/tx/${intent.txHash}`}
+                      href={`${getSourceNetwork(intent.sourceChainId || somniaTestnet.id)?.chain.blockExplorers?.default.url || somniaTestnet.blockExplorers.default.url}/tx/${intent.txHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 text-sm font-mono"

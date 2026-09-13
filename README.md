@@ -78,7 +78,7 @@ SOURCE CHAIN                    OFF-CHAIN                  ARC CHAIN
 ## ✨ Key Features
 
 ### For Users
-- **No Network Switching** - Use your wallet on any chain
+- **Source network selection** - Switch your wallet among the configured source testnets
 - **No Bridging** - No need to bridge funds to Arc
 - **Any Wallet** - MetaMask, Phantom, Coinbase Wallet, etc.
 - **Simple UX** - One transaction, automatic execution
@@ -130,45 +130,20 @@ npm install
 
 ### Environment Setup
 
-Create a `.env.local` file in the root directory:
-```env
-# Source Chain (Somnia Testnet)
-NEXT_PUBLIC_ARC_GATEWAY_ADDRESS=0xD5Bb85Ee81342ea97A240b21156d33cb3a4Df985
+Copy `.env.example` to `.env.local` and `web3-hardhat-intent/.env.example` to `web3-hardhat-intent/.env`. Add the funded, authorized relayer `PRIVATE_KEY` only to the latter. Never commit either live env file. The example contains public addresses for the active Somnia, Base Sepolia, Monad Testnet, and Arc Testnet deployments.
 
-# Arc Chain
-NEXT_PUBLIC_COUNTER_ADDRESS=0x5E6658ac6cBC9b0109C28BED00bC4Af0F0A3f1CD
-NEXT_PUBLIC_ARC_EXECUTOR_ADDRESS=0x90Dfd581393104EAe03Fd349b4867A7E8F51313b
-```
-
-Create a `.env` file in `web3-hardhat-intent/`:
-```env
-# Private key (without 0x prefix)
-PRIVATE_KEY=your_private_key_here
-
-# Network RPCs
-ARC_TESTNET_RPC_URL=https://rpc.testnet.arc.network
-SOMNIA_TESTNET_RPC_URL=https://dream-rpc.somnia.network/
-SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/YOUR_KEY
-
-# Contract addresses (fill after deployment)
-ARC_GATEWAY_ADDRESS=0xD5Bb85Ee81342ea97A240b21156d33cb3a4Df985
-ARC_EXECUTOR_ADDRESS=0x90Dfd581393104EAe03Fd349b4867A7E8F51313b
-COUNTER_ADDRESS=0x5E6658ac6cBC9b0109C28BED00bC4Af0F0A3f1CD
-TODO_ADDRESS=
-
-# Relayer config
-RELAYER_ADDRESS=
-RELAYER_POLL_INTERVAL=5000
-```
+The wallet must connect to one of the configured source networks. Base Sepolia and Monad Testnet gateways were deployed at the blocks listed in the relayer example. Sepolia, Arbitrum Sepolia, and OP Sepolia appear as unavailable until a gateway address and relayer settings are supplied; no transaction can be forwarded through an unconfigured network.
 
 ### Running the Application
 
-1. **Start the frontend:**
+1. **Start the UI and relayer together:**
 ```bash
 npm run dev
 ```
 
-2. **In a separate terminal, start the relayer:**
+   This requires both sets of dependencies (`npm ci` at the root and in `web3-hardhat-intent/`) plus the private relayer env file. To inspect the UI alone, use `npm run dev:ui`; the progress view will show the relayer offline.
+
+2. **Or run the relayer separately:**
 ```bash
 cd web3-hardhat-intent
 npm run relayer
@@ -176,6 +151,8 @@ npm run relayer
 
 3. **Open your browser:**
 Navigate to `http://localhost:3000`
+
+The local app and relayer share `public/intent-history.json` and the direct intent queue on the same filesystem. The UI shows signing, source confirmation, relayer detection, Arc execution, and explorer links. A serverless deployment needs a shared durable queue and history store before the same live tracking will work across separate hosts.
 
 ---
 

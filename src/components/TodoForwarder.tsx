@@ -1,22 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "./ui/Button";
-import { Zap, Loader2, CheckCircle2, AlertCircle, Plus } from "lucide-react";
+import { Zap, Loader2, AlertCircle, Plus } from "lucide-react";
 import { useTodoIntent } from "@/hooks/useTodoIntent";
 import { useWallet } from "@/hooks/useWallet";
-import { somniaTestnet } from "@/config/chains";
+import { IntentProgress } from "./IntentProgress";
 
 export function TodoForwarder() {
-  const [mounted, setMounted] = useState(false);
   const { wallet } = useWallet();
-  const { forwardAddTodo, isForwarding, error, intents } = useTodoIntent();
+  const { forwardAddTodo, isForwarding, error, phase, activeIntent, relayerOnline, source } = useTodoIntent();
   const [todoText, setTodoText] = useState("");
-  const [lastTxHash, setLastTxHash] = useState<string | null>(null);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleAddTodo = async () => {
     if (!todoText.trim()) {
@@ -24,25 +18,14 @@ export function TodoForwarder() {
     }
 
     try {
-      setLastTxHash(null);
-      console.log("🚀 Starting addTodo flow with text:", todoText.trim());
       await forwardAddTodo(todoText.trim());
-      console.log("✅ forwardAddTodo completed");
       setTodoText("");
     } catch (err) {
       console.error("❌ Failed to add todo:", err);
     }
   };
 
-  const isOnCorrectNetwork = wallet.isOnSomnia;
-
-  // Update lastTxHash when we get a new intent
-  useEffect(() => {
-    if (intents.length > 0 && intents[0].txHash) {
-      setLastTxHash(intents[0].txHash);
-      console.log("📝 Latest intent hash:", intents[0].txHash, "status:", intents[0].status);
-    }
-  }, [intents]);
+  const isOnCorrectNetwork = Boolean(source?.gateway);
 
   return (
     <div className="neo-card p-6 md:p-8">
@@ -53,12 +36,12 @@ export function TodoForwarder() {
         <div>
           <h3 className="text-xl font-bold text-white">Add todo</h3>
           <p className="text-sm text-[var(--muted)]">
-            Sign on {somniaTestnet.name}, execute on Arc
+            Sign on {source?.chain.name || "a configured source network"}, execute on Arc
           </p>
         </div>
       </div>
 
-      {mounted && !wallet.isConnected && (
+      {!wallet.isConnected && (
         <div className="bg-yellow-100 border-2 border-yellow-500 rounded-lg p-4 mb-4">
           <p className="text-yellow-800 font-bold flex items-center gap-2">
             <AlertCircle className="w-4 h-4" />
@@ -67,10 +50,10 @@ export function TodoForwarder() {
         </div>
       )}
 
-      {mounted && wallet.isConnected && !isOnCorrectNetwork && (
+      {wallet.isConnected && !isOnCorrectNetwork && (
         <div className="bg-yellow-100 border-2 border-yellow-500 rounded-lg p-4 mb-4">
           <p className="text-yellow-800 font-bold">
-            Please switch to {somniaTestnet.name} (Chain ID: {somniaTestnet.id})
+            Choose a configured source network above to add todos.
           </p>
         </div>
       )}
@@ -80,6 +63,8 @@ export function TodoForwarder() {
           <p className="text-red-800 font-bold">{error}</p>
         </div>
       )}
+
+      {wallet.isConnected && isOnCorrectNetwork && !relayerOnline && <p className="mb-4 rounded-lg border border-yellow-300/30 bg-yellow-300/10 p-4 text-sm text-yellow-200">The relayer is offline or not monitoring this network. Start the relayer before submitting a todo.</p>}
 
       <div className="space-y-4">
         <div>
@@ -93,14 +78,14 @@ export function TodoForwarder() {
               }
             }}
             placeholder="Enter todo text..."
-            disabled={!mounted || isForwarding || !wallet.isConnected || !isOnCorrectNetwork}
+            disabled={isForwarding || !wallet.isConnected || !isOnCorrectNetwork || !relayerOnline}
             className="neo-input w-full px-4 py-3 font-medium placeholder:text-white/30 disabled:cursor-not-allowed disabled:opacity-50"
           />
         </div>
 
         <Button
           onClick={handleAddTodo}
-          disabled={!mounted || !wallet.isConnected || isForwarding || !isOnCorrectNetwork || !todoText.trim()}
+          disabled={!wallet.isConnected || isForwarding || !isOnCorrectNetwork || !relayerOnline || !todoText.trim()}
           size="lg"
           className="w-full shadow-[0_0_24px_#c9ff3d26] disabled:cursor-not-allowed"
         >
@@ -125,7 +110,7 @@ export function TodoForwarder() {
         <ul className="space-y-1.5 text-sm text-[var(--muted)]">
           <li className="flex items-start gap-2">
             <span className="font-bold">1.</span>
-            <span>Sign transaction on {somniaTestnet.name}</span>
+            <span>Sign transaction on {source?.chain.name || "the selected source"}</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="font-bold">2.</span>
@@ -141,6 +126,7 @@ export function TodoForwarder() {
           </li>
         </ul>
       </div>
+      <IntentProgress phase={phase} intent={activeIntent} relayerOnline={relayerOnline} error={error} />
     </div>
   );
 }

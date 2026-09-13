@@ -4,11 +4,15 @@ import { CounterDisplay } from "@/components/CounterDisplay";
 import { IntentForwarder } from "@/components/IntentForwarder";
 import { IntentHistory } from "@/components/IntentHistory";
 import { ArrowRight, Radio, Zap } from "lucide-react";
-import { somniaTestnet } from "@/config/chains";
+import { useChainId } from "wagmi";
+import { getSourceNetwork } from "@/config/sourceChains";
+import { IntentFlowProvider } from "@/hooks/IntentFlowContext";
+import { SourceNetworkSelector } from "@/components/SourceNetworkSelector";
 
 export default function AppPage() {
+    const sourceName = getSourceNetwork(useChainId())?.chain.name || "a supported source network";
     return (
-        <div className="mx-auto max-w-6xl py-8 md:py-14">
+        <IntentFlowProvider kind="counter"><div className="mx-auto max-w-6xl py-8 md:py-14">
             {/* Header */}
             <div className="mb-12 max-w-3xl">
                 <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[var(--primary)]/30 bg-[var(--primary)]/10 px-3 py-1.5 text-xs font-bold tracking-[.14em] text-[var(--primary)]">
@@ -19,7 +23,7 @@ export default function AppPage() {
                     Counter <span className="text-[var(--primary)]">intents</span>
                 </h1>
                 <p className="text-lg leading-relaxed text-[var(--muted)] md:text-xl">
-                    Sign on {somniaTestnet.name}. The relayer delivers the same intent for execution on Arc Testnet.
+                    Sign on {sourceName}. The relayer delivers the intent for execution on Arc Testnet.
                 </p>
             </div>
 
@@ -28,8 +32,8 @@ export default function AppPage() {
                 <div className="mb-5 flex items-center gap-2 text-xs font-bold tracking-[.14em] text-[var(--muted)]"><Radio className="size-4 text-[var(--primary)]" /> EXECUTION PIPELINE</div>
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                     {[
-                        { step: "1", label: "Connect Wallet", chain: "Any Chain" },
-                        { step: "2", label: "Forward Intent", chain: somniaTestnet.name },
+                        { step: "1", label: "Connect Wallet", chain: "Supported EVM" },
+                        { step: "2", label: "Forward Intent", chain: sourceName },
                         { step: "3", label: "Relayer Detects", chain: "Off-Chain" },
                         { step: "4", label: "Execute on Arc", chain: "Arc Testnet" },
                     ].map((item, i) => (
@@ -75,6 +79,7 @@ export default function AppPage() {
                 </div>
             </div> */}
             {/* Main Content Grid */}
+            <SourceNetworkSelector />
             <div className="mb-8 grid gap-6 md:grid-cols-2">
                 <CounterDisplay />
                 <IntentForwarder />
@@ -85,6 +90,6 @@ export default function AppPage() {
 
             {/* Intent History Table */}
             <IntentHistory />
-        </div>
+        </div></IntentFlowProvider>
     );
 }

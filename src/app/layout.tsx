@@ -17,8 +17,8 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "Universal Arc Kit | Chain-Abstracted Payments",
-  description: "Accept payments from any blockchain wallet. Execution and settlement happen on Arc. Zero friction.",
+  title: "ArcFlow | Chain-Abstracted Payments",
+  description: "Submit intents from Somnia, Base Sepolia, or Monad Testnet and track execution on Arc Testnet.",
 };
 
 export default function RootLayout({
@@ -41,4 +41,3 @@ export default function RootLayout({
     </html>
   );
 }
-

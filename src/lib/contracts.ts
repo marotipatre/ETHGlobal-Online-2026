@@ -329,10 +329,10 @@ export const ARC_EXECUTOR_ABI = [
 // Contract addresses - these should be set via environment variables
 export const CONTRACT_ADDRESSES = {
   // Source chain (Somnia/Ethereum) - where user signs
-  ARC_GATEWAY: process.env.NEXT_PUBLIC_ARC_GATEWAY_ADDRESS || "0xDDdE8b8073B63f86C15C67e49749B34b5fE77651",
+  ARC_GATEWAY: process.env.NEXT_PUBLIC_ARC_GATEWAY_ADDRESS || "",
   
   // Arc Chain - where execution happens
-  COUNTER: process.env.NEXT_PUBLIC_COUNTER_ADDRESS || "0x425Fb305CDA77baD1F1565B0feCf5DC27F5bF766",
-  TODO: process.env.NEXT_PUBLIC_TODO_ADDRESS || "0x027358685B192d707cbD87c9bb3a08bc7dC04Ac9",
-  ARC_EXECUTOR: process.env.NEXT_PUBLIC_ARC_EXECUTOR_ADDRESS || "0x641B0a7a8dcDB2F1bFee8F463DA8d25144B73938",
+  COUNTER: process.env.NEXT_PUBLIC_COUNTER_ADDRESS || "",
+  TODO: process.env.NEXT_PUBLIC_TODO_ADDRESS || "",
+  ARC_EXECUTOR: process.env.NEXT_PUBLIC_ARC_EXECUTOR_ADDRESS || "",
 } as const;

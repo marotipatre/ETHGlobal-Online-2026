@@ -1,43 +1,23 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { useReadContract, useWatchBlockNumber } from "wagmi";
 import { COUNTER_ABI, CONTRACT_ADDRESSES } from "@/lib/contracts";
 import { arcTestnet } from "@/config/chains";
 
 export function useCounter() {
-  const [count, setCount] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const { data, isLoading, error: readError, refetch } = useReadContract({
+  const { data, isLoading, error, refetch } = useReadContract({
     address: CONTRACT_ADDRESSES.COUNTER as `0x${string}`,
     abi: COUNTER_ABI,
     functionName: "getCount",
     chainId: arcTestnet.id,
+    query: { enabled: Boolean(CONTRACT_ADDRESSES.COUNTER) },
   });
 
-  // Watch for new blocks to refetch
-  useWatchBlockNumber({
-    chainId: arcTestnet.id,
-    onBlockNumber: () => {
-      refetch();
-    },
-  });
-
-  useEffect(() => {
-    if (data !== undefined) {
-      setCount(Number(data));
-      setError(null);
-    }
-    if (readError) {
-      setError(readError.message || "Failed to fetch counter");
-    }
-  }, [data, readError]);
-
+  useWatchBlockNumber({ chainId: arcTestnet.id, onBlockNumber: () => { void refetch(); } });
   return {
-    count,
+    count: data === undefined ? null : Number(data),
     isLoading,
-    error,
+    error: !CONTRACT_ADDRESSES.COUNTER ? "Counter address is not configured" : error?.message || null,
     refetch,
   };
 }

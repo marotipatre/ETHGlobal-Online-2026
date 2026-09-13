@@ -75,9 +75,9 @@ export async function switchNetwork(chainId: number, rpcUrl: string, chainName: 
       method: "wallet_switchEthereumChain",
       params: [{ chainId: `0x${chainId.toString(16)}` }],
     });
-  } catch (switchError: any) {
+  } catch (switchError: unknown) {
     // This error code indicates that the chain has not been added to MetaMask
-    if (switchError.code === 4902) {
+    if (typeof switchError === "object" && switchError !== null && "code" in switchError && switchError.code === 4902) {
       await window.ethereum.request({
         method: "wallet_addEthereumChain",
         params: [

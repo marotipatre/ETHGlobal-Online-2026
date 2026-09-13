@@ -3,6 +3,7 @@
 import { useIntent, type IntentStatus } from "@/hooks/useIntent";
 import { Clock, CheckCircle2, XCircle, Loader2, ExternalLink, RefreshCw } from "lucide-react";
 import { somniaTestnet, arcTestnet } from "@/config/chains";
+import { getSourceNetwork } from "@/config/sourceChains";
 
 function getStatusIcon(status: IntentStatus) {
   switch (status) {
@@ -40,7 +41,7 @@ function getStatusBadgeColor(status: IntentStatus) {
 export function IntentHistory() {
   const { intents, isLoadingHistory } = useIntent();
 
-  if (isLoadingHistory) {
+  if (isLoadingHistory && intents.length === 0) {
     return (
       <div className="neo-card p-8 bg-white">
         <h3 className="font-black text-xl text-black mb-4 flex items-center gap-2">
@@ -48,7 +49,7 @@ export function IntentHistory() {
           Intent History
         </h3>
         <p className="text-black/60 text-center py-8">
-          Loading intent history from blockchain...
+          Loading intent history...
         </p>
       </div>
     );
@@ -82,7 +83,7 @@ export function IntentHistory() {
                   Timestamp
                 </th>
                 <th className="px-4 py-3 text-left font-black text-sm border-r-2 border-white/20">
-                  Somnia TX
+                  Source TX
                 </th>
                 <th className="px-4 py-3 text-left font-black text-sm border-r-2 border-white/20">
                   Arc Execution
@@ -128,7 +129,7 @@ export function IntentHistory() {
                   {/* Somnia TX */}
                   <td className="px-4 py-3 border-r-2 border-black/10">
                     <a
-                      href={`${somniaTestnet.blockExplorers.default.url}/tx/${intent.txHash}`}
+                      href={`${getSourceNetwork(intent.sourceChainId || somniaTestnet.id)?.chain.blockExplorers?.default.url || somniaTestnet.blockExplorers.default.url}/tx/${intent.txHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 text-sm font-mono"

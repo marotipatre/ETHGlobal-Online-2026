@@ -3,20 +3,22 @@
 import { getDefaultWallets, RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
 import { WagmiProvider, createConfig, http } from "wagmi";
 import { somniaTestnet, arcTestnet } from "@/config/chains";
+import { sourceNetworks } from "@/config/sourceChains";
 import type { ReactNode } from "react";
 import "@rainbow-me/rainbowkit/styles.css";
 
 const { connectors } = getDefaultWallets({
-  appName: "Universal Arc Kit",
+  appName: "ArcFlow",
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "367e7033f1d106ae8bdbbd60e7c478a9",
 });
 
 const config = createConfig({
-  chains: [somniaTestnet, arcTestnet],
+  chains: [somniaTestnet, ...sourceNetworks.filter(({ chain }) => chain.id !== somniaTestnet.id).map(({ chain }) => chain), arcTestnet],
   connectors,
   transports: {
     [somniaTestnet.id]: http(process.env.NEXT_PUBLIC_SOMNIA_RPC_URL || "https://dream-rpc.somnia.network/"),
     [arcTestnet.id]: http(process.env.NEXT_PUBLIC_ARC_RPC_URL || "https://rpc.testnet.arc.network"),
+    ...Object.fromEntries(sourceNetworks.filter(({ chain }) => chain.id !== somniaTestnet.id).map(({ chain, rpcUrl }) => [chain.id, http(rpcUrl)])),
   },
 });
 

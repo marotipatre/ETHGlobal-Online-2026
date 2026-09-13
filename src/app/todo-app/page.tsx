@@ -4,11 +4,15 @@ import { TodoDisplay } from "@/components/TodoDisplay";
 import { TodoForwarder } from "@/components/TodoForwarder";
 import { TodoIntentHistory } from "@/components/TodoIntentHistory";
 import { ArrowRight, ListTodo, Zap } from "lucide-react";
-import { somniaTestnet } from "@/config/chains";
+import { useChainId } from "wagmi";
+import { getSourceNetwork } from "@/config/sourceChains";
+import { IntentFlowProvider } from "@/hooks/IntentFlowContext";
+import { SourceNetworkSelector } from "@/components/SourceNetworkSelector";
 
 export default function TodoAppPage() {
+    const sourceName = getSourceNetwork(useChainId())?.chain.name || "a supported source network";
     return (
-        <div className="mx-auto max-w-6xl py-8 md:py-14">
+        <IntentFlowProvider kind="todo"><div className="mx-auto max-w-6xl py-8 md:py-14">
             {/* Header */}
             <div className="mb-12 max-w-3xl">
                 <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[var(--primary)]/30 bg-[var(--primary)]/10 px-3 py-1.5 text-xs font-bold tracking-[.14em] text-[var(--primary)]">
@@ -19,7 +23,7 @@ export default function TodoAppPage() {
                     Todo <span className="text-[var(--primary)]">intents</span>
                 </h1>
                 <p className="text-lg leading-relaxed text-[var(--muted)] md:text-xl">
-                    Add, toggle, and delete todos from {somniaTestnet.name}; execution stays on Arc Testnet.
+                    Add, toggle, and delete todos from {sourceName}; execution stays on Arc Testnet.
                 </p>
             </div>
 
@@ -28,8 +32,8 @@ export default function TodoAppPage() {
                 <div className="mb-5 flex items-center gap-2 text-xs font-bold tracking-[.14em] text-[var(--muted)]"><ListTodo className="size-4 text-[var(--primary)]" /> EXECUTION PIPELINE</div>
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                     {[
-                        { step: "1", label: "Connect Wallet", chain: "Any Chain" },
-                        { step: "2", label: "Add/Toggle/Delete", chain: somniaTestnet.name },
+                        { step: "1", label: "Connect Wallet", chain: "Supported EVM" },
+                        { step: "2", label: "Add/Toggle/Delete", chain: sourceName },
                         { step: "3", label: "Relayer Detects", chain: "Off-Chain" },
                         { step: "4", label: "Execute on Arc", chain: "Arc Testnet" },
                     ].map((item, i) => (
@@ -52,6 +56,7 @@ export default function TodoAppPage() {
             </div>
 
             {/* Main Content Grid */}
+            <SourceNetworkSelector />
             <div className="mb-8 grid gap-6 md:grid-cols-2">
                 <TodoDisplay />
                 <TodoForwarder />
@@ -59,6 +64,6 @@ export default function TodoAppPage() {
 
             {/* Todo Intent History Table */}
             <TodoIntentHistory />
-        </div>
+        </div></IntentFlowProvider>
     );
 }

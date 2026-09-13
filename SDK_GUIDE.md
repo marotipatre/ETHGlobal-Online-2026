@@ -1,186 +1,50 @@
-# 🚀 Universal Arc Kit SDK - Complete Guide
+# ArcFlow developer guide
 
-## 🎯 What This SDK Does
+This repository is a Next.js application and an Arc intent relayer. It does not publish a standalone npm SDK package. The Counter and Todo pages are working examples of the integration.
 
-**Your Situation:**
-- ✅ You have a smart contract application **deployed on Arc Network**
-- ✅ You want users to interact with it **from any blockchain** (Ethereum, Polygon, Solana, etc.)
-- ✅ You don't want users to switch networks or bridge funds
+## Supported testnets
 
-**The Solution:**
-Wrap your application component with `ArcUniversalAppKit`. Put your `<YourApp/>` component inside the wrapper, provide your contract address and ABI, and the wrapper handles everything else!
+- Somnia Testnet (source, chain ID 50312)
+- Base Sepolia (source, chain ID 84532)
+- Monad Testnet (source, chain ID 10143)
+- Arc Testnet (execution destination, chain ID 5042002)
 
-**What Happens:**
-1. User connects wallet on **their preferred chain** (any chain)
-2. User triggers operations through your app
-3. Operations are automatically forwarded to **Arc Network**
-4. Execution happens on **Arc Network** (where your app lives)
-5. User never leaves their chain! ✨
+Sepolia, Arbitrum Sepolia, and OP Sepolia are listed as future source options. They stay disabled until a gateway is deployed and configured for both the UI and relayer.
 
----
+## Current contract addresses
 
-## 🚀 Quick Start
+- Somnia ArcGateway: `0x96DBFD24b4d6aC9f0D00E9fFb59d7b76C3ae34af`
+- Base Sepolia ArcGateway: `0xfC18C1Ae3ac3242ea7dB7839D396f51F8692F5EA`
+- Monad Testnet ArcGateway: `0x039feAd52D2e8c818EdF837bef52D2Fd01aF7EeE`
+- ArcExecutor: `0x91e2F7324d27F6714d3b7F72BD2cc055dc3CE82D`
+- Arc Counter: `0x20371AD0921151682AEEA67C16db38144ebEaa8E`
+- Arc Todo: `0x0c885d338123149493E16cFAd53969bC06B49722`
 
-### Step 1: Install
+These are testnet deployments. Use your own environment variables if you redeploy.
 
-```bash
-npm install @arc/universal-app-kit
-```
+## How an intent moves
 
-### Step 2: Wrap Your Application
+1. The wallet connects to a configured source testnet.
+2. Counter calls `ArcGateway.forwardIntent(counterAddress)`. Todo calls `ArcGateway.forwardIntentWithData(todoAddress, encodedCalldata)`.
+3. The source transaction confirms and its hash enters the local direct queue.
+4. The relayer verifies the gateway event and target, then calls ArcExecutor on Arc Testnet.
+5. The relayer records detected, executing, completed, or failed status in the shared history file. The UI polls this history and reads the live Counter or Todo state from Arc.
 
-```tsx
-import { ArcUniversalAppKit } from "@arc/universal-app-kit";
+The wallet must have gas on the chosen source chain. The authorized relayer must have Arc Testnet gas. No bridging is performed.
 
-function MyApp() {
-  return (
-    <ArcUniversalAppKit
-      RELAYER_ADDRESS="0xdAF0182De86F904918Db8d07c7340A1EfcDF8244"
-      ARC_EXECUTOR_ADDRESS="0x90Dfd581393104EAe03Fd349b4867A7E8F51313b"
-      Application_deployed_address="0x5E6658ac6cBC9b0109C28BED00bC4Af0F0A3f1CD"
-      ARC_GATEWAY_ADDRESS="0xD5Bb85Ee81342ea97A240b21156d33cb3a4Df985"
-      Application_abi={ApplicationABI}
-    >
-      <YourApp/>
-    </ArcUniversalAppKit>
-  );
-}
-```
+## Local setup
 
-**That's it!** Your application is now accessible from any blockchain.
+Copy `.env.example` to `.env.local`. Copy `web3-hardhat-intent/.env.example` to `web3-hardhat-intent/.env` and set `PRIVATE_KEY` privately. Install dependencies in both directories, then run `npm run dev` at the repository root. This starts the UI and relayer together. Use `npm run dev:ui` for an interface-only session.
 
----
+The UI, direct queue, and relayer currently share one filesystem. A hosted deployment with separate processes needs a durable shared queue and history store. Static files on a serverless host are not a substitute for that store.
 
-## 📋 What You Need
+## Reusing the patterns
 
-1. **Your Application Contract Address** (deployed on Arc Network)
-2. **Your Application ABI** (from deployment artifacts or block explorer)
-3. **Arc Infrastructure Addresses** (provided by Arc Network):
-   - `RELAYER_ADDRESS`
-   - `ARC_EXECUTOR_ADDRESS`
-   - `ARC_GATEWAY_ADDRESS`
+Use `src/config/sourceChains.ts` for source networks and gateway addresses, `src/lib/contracts.ts` for Arc target addresses and ABIs, and `src/hooks/IntentFlowContext.tsx` for submission and progress tracking. The relayer allowlists Counter and Todo targets in `web3-hardhat-intent/relayer/index.ts`. An additional target requires matching ABI, UI submission, and a deliberate relayer allowlist update.
 
----
+## Troubleshooting
 
-## 🔄 How It Works
-
-```
-User on Any Chain (Ethereum/Polygon/Solana/etc.)
-         │
-         │ 1. User triggers operation
-         ▼
-    ArcUniversalAppKit Wrapper
-         │
-         │ 2. Forwards intent to Gateway
-         ▼
-    Arc Gateway (Source Chain)
-         │
-         │ 3. Relayer picks up event
-         ▼
-    Arc Relayer (Off-Chain)
-         │
-         │ 4. Executes on Arc Network
-         ▼
-    Arc Executor (Arc Chain)
-         │
-         │ 5. Calls your application contract
-         ▼
-    Your Application (Arc Chain)
-         │
-         └─▶ Operation completed on Arc! ✅
-```
-
-**Key Points:**
-- ✅ User stays on their preferred chain
-- ✅ No network switching required
-- ✅ No bridging needed
-- ✅ All operations settle on Arc Network
-- ✅ Your app logic remains unchanged
-
----
-
-## 📝 Prerequisites
-
-### 1. Deploy Your Contract on Arc Network
-
-Your application contract must be deployed on **Arc Network**. This is where all operations will execute and state will be stored.
-
-### 2. Get Your Contract ABI
-
-Extract the ABI from your deployment artifacts:
-
-```bash
-# From Hardhat
-cat artifacts/contracts/MyApp.sol/MyApp.json | jq .abi > MyApp.abi.json
-```
-
-Or copy it from:
-- Your IDE/compiler output
-- Arc block explorer
-
-### 3. Get Arc Infrastructure Addresses
-
-Contact Arc Network to get:
-- `RELAYER_ADDRESS`
-- `ARC_EXECUTOR_ADDRESS`
-- `ARC_GATEWAY_ADDRESS`
-
----
-
-## 💡 Example Usage
-
-### Simple Example
-
-```tsx
-import { ArcUniversalAppKit } from "@arc/universal-app-kit";
-
-// Your app's ABI
-const MY_APP_ABI = [
-  {
-    inputs: [{ name: "_value", type: "uint256" }],
-    name: "setValue",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  // ... rest of your ABI
-] as const;
-
-function App() {
-  return (
-    <ArcUniversalAppKit
-      RELAYER_ADDRESS="0xdAF0182De86F904918Db8d07c7340A1EfcDF8244"
-      ARC_EXECUTOR_ADDRESS="0x90Dfd581393104EAe03Fd349b4867A7E8F51313b"
-      Application_deployed_address="0x5E6658ac6cBC9b0109C28BED00bC4Af0F0A3f1CD"
-      ARC_GATEWAY_ADDRESS="0xD5Bb85Ee81342ea97A240b21156d33cb3a4Df985"
-      Application_abi={ApplicationABI}
-    >
-      <YourApp/>
-    </ArcUniversalAppKit>
-  );
-}
-```
-
----
-
-## ⚠️ Troubleshooting
-
-### "Wallet not connected"
-Ensure the user has connected their wallet before using the component.
-
-### "Wrong network"
-Users can connect from any chain - the wrapper handles cross-chain communication automatically.
-
-### "Function encoding failed"
-Verify your ABI matches your deployed contract exactly. Check function names, parameter types, and order.
-
-### "Intent not executing"
-1. Verify your contract is deployed on Arc Network
-2. Check all addresses are correct
-3. Ensure relayer is running (contact Arc Network support)
-
----
-
-## 🎉 That's It!
-
-Your Arc-deployed application is now accessible from any blockchain. Users can interact with your app while staying on their preferred chain - no network switching or bridging required!
+- If a wallet signs but Arc state does not change, confirm the UI and relayer use the same source gateway and Arc target addresses.
+- If the progress panel says the relayer is offline, start `npm run dev` or `npm run relayer` and check its output.
+- If the source transaction succeeded but execution failed, inspect the linked source and Arc transactions and the relayer history error.
+- If a network is disabled, deploy ArcGateway there, set its gateway and start-block variables in both environments, and restart the app and relayer.

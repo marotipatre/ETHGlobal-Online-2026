@@ -1,10 +1,17 @@
 "use client";
 
+import { useEffect } from "react";
 import { useCounter } from "@/hooks/useCounter";
+import { useIntent } from "@/hooks/useIntent";
 import { RefreshCw, TrendingUp } from "lucide-react";
 
 export function CounterDisplay() {
   const { count, isLoading, error, refetch } = useCounter();
+  const { activeIntent } = useIntent();
+
+  useEffect(() => {
+    if (activeIntent?.status === "completed") void refetch();
+  }, [activeIntent?.status, activeIntent?.executionHash, refetch]);
 
   return (
     <div className="neo-card p-6 md:p-8">

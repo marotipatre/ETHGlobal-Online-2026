@@ -1,10 +1,11 @@
 "use client";
 
 import { ReactNode } from "react";
-import { RainbowKitWrapper } from "./RainbowKitWrapper";
+import dynamic from "next/dynamic";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const queryClient = new QueryClient();
+const RainbowKitWrapper = dynamic(() => import("./RainbowKitWrapper").then((module) => module.RainbowKitWrapper), { ssr: false });
 
 interface ProvidersProps {
     children: ReactNode;

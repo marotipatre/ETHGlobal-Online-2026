@@ -24,7 +24,7 @@ export default function Navbar() {
       <div className="mx-auto flex h-[4.5rem] w-full max-w-[1440px] items-center justify-between px-5">
         <Link href="/" className="flex items-center gap-2.5" onClick={() => setIsOpen(false)}>
           <span className="grid size-9 place-items-center rounded-xl bg-[var(--primary)] text-[#0b100c] shadow-[0_0_26px_#c9ff3d3d]"><Zap className="size-5 fill-current" /></span>
-          <span className="font-[family-name:var(--font-heading)] text-base font-bold tracking-tight">Universal Arc <span className="text-[var(--primary)]">Kit</span></span>
+          <span className="font-[family-name:var(--font-heading)] text-base font-bold tracking-tight">Arc<span className="text-[var(--primary)]">Flow</span></span>
         </Link>
         <nav className="hidden items-center gap-1 lg:flex">{links.map(({ href, label }) => <Link key={href} href={href} className={navLink(href)}>{label}</Link>)}</nav>
         <div className="hidden lg:block"><ConnectWallet /></div>

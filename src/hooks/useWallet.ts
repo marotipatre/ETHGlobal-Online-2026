@@ -2,6 +2,7 @@
 
 import { useAccount, useChainId, useConnect, useDisconnect } from "wagmi";
 import { somniaTestnet } from "@/config/chains";
+import { getSourceNetwork } from "@/config/sourceChains";
 
 export function useWallet() {
   const { address, isConnected } = useAccount();
@@ -14,6 +15,7 @@ export function useWallet() {
     isConnected,
     chainId,
     isOnSomnia: chainId === somniaTestnet.id,
+    isOnSupportedSource: Boolean(getSourceNetwork(chainId)?.gateway),
   };
 
   return {
