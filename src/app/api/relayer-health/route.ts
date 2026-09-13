@@ -1,23 +1,20 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { decodeStoredJson, redisConfigured, redisGet } from "../../../../web3-hardhat-intent/relayer/redis";
 
 export const dynamic = "force-dynamic";
 
-async function redisGet(key: string): Promise<unknown | null> {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  const res = await fetch(`${url}/get/${key}`, { headers: { Authorization: `Bearer ${token}` } });
-  const json = await res.json() as { result?: string | null };
-  return json.result ? JSON.parse(json.result) : null;
-}
-
 export async function GET() {
   try {
-    const redis = await redisGet("relayer-health");
-    if (redis) return Response.json(redis, { headers: { "Cache-Control": "no-store" } });
-    const content = await readFile(join(process.cwd(), "public", "relayer-health.json"), "utf8");
-    return Response.json(JSON.parse(content), { headers: { "Cache-Control": "no-store" } });
+    const health = redisConfigured()
+      ? await redisGet("relayer-health")
+      : decodeStoredJson(await readFile(join(process.cwd(), "public", "relayer-health.json"), "utf8"));
+    if (!health || typeof health !== "object" || !("updatedAt" in health) ||
+        typeof health.updatedAt !== "number" || !("sources" in health) ||
+        !Array.isArray(health.sources) || !health.sources.every(Number.isInteger)) {
+      throw new Error("Invalid relayer heartbeat");
+    }
+    return Response.json(health, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return Response.json({ updatedAt: 0, sources: [] }, { headers: { "Cache-Control": "no-store" } });
   }

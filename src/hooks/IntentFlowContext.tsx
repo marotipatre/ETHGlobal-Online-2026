@@ -54,17 +54,21 @@ export function IntentFlowProvider({ kind, children }: { kind: "counter" | "todo
   const target = kind === "counter" ? CONTRACT_ADDRESSES.COUNTER : kind === "todo" ? CONTRACT_ADDRESSES.TODO : CONTRACT_ADDRESSES.VAULT;
 
   const refresh = useCallback(async () => {
-    if (!address) { setIntents([]); setIsLoadingHistory(false); return; }
+    if (!address) { setIntents([]); setRelayerOnline(false); setIsLoadingHistory(false); return; }
     try {
       const [historyResponse, healthResponse] = await Promise.all([
         fetch("/api/intents", { cache: "no-store" }),
         fetch("/api/relayer-health", { cache: "no-store" }),
       ]);
       if (!historyResponse.ok) throw new Error("History service unavailable");
-      const history = (await historyResponse.json() as IntentRecord[])
+      if (!healthResponse.ok) throw new Error("Relayer health service unavailable");
+      const records: unknown = await historyResponse.json();
+      if (!Array.isArray(records)) throw new Error("Invalid intent history response");
+      const history = (records as IntentRecord[])
         .filter((item) => item.user?.toLowerCase() === address.toLowerCase() && item.target?.toLowerCase() === target.toLowerCase());
       const health = await healthResponse.json() as { updatedAt?: number; sources?: number[] };
-      setRelayerOnline(Boolean(health.updatedAt && Date.now() - health.updatedAt < 30000 && health.sources?.includes(chainId)));
+      const age = typeof health.updatedAt === "number" ? Date.now() - health.updatedAt : Infinity;
+      setRelayerOnline(age >= 0 && age < 30000 && Array.isArray(health.sources) && health.sources.includes(chainId));
       setIntents((previous) => {
         const byKey = new Map(previous.map((item) => [recordKey(item), item]));
         for (const item of history) {
@@ -74,6 +78,7 @@ export function IntentFlowProvider({ kind, children }: { kind: "counter" | "todo
         return [...byKey.values()].sort((a, b) => b.timestamp - a.timestamp);
       });
     } catch (cause) {
+      setRelayerOnline(false);
       setError(cause instanceof Error ? cause.message : "Could not refresh intent history");
     } finally {
       setIsLoadingHistory(false);

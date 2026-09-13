@@ -2,6 +2,7 @@ import { ethers, type EventLog } from "ethers";
 import * as dotenv from "dotenv";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { RedisError, redisCommand, redisConfigured, redisGet, redisSave } from "./redis";
 
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
@@ -11,12 +12,13 @@ type Intent = {
   status: Status; executionHash?: string; sourceChainId: number;
   action?: "add" | "toggle" | "delete" | "deposit" | "withdraw" | "harvest"; data?: string; error?: string;
 };
-type Source = { chainId: number; name: string; rpc: string; gateway: string; startBlock?: number; provider: ethers.JsonRpcProvider; contract: ethers.Contract; cursor: number };
+type Source = { chainId: number; name: string; rpc: string; gateway: string; startBlock?: number; provider: ethers.JsonRpcProvider; contract: ethers.Contract; cursor: number; lastPolledAt?: number };
 
-const historyPath = path.resolve(__dirname, "../../public/intent-history.json");
-const checkpointPath = path.resolve(__dirname, "../../public/relayer-checkpoints.json");
-const healthPath = path.resolve(__dirname, "../../public/relayer-health.json");
-const queuePath = path.resolve(__dirname, "../../public/intent-queue");
+const stateDirectory = process.env.RELAYER_STATE_DIR || path.resolve(__dirname, "../../public");
+const historyPath = path.join(stateDirectory, "intent-history.json");
+const checkpointPath = path.join(stateDirectory, "relayer-checkpoints.json");
+const healthPath = path.join(stateDirectory, "relayer-health.json");
+const queuePath = path.join(stateDirectory, "intent-queue");
 const gatewayAbi = [
   "event IntentForwarded(address indexed user,address indexed target,uint256 nonce,uint256 timestamp)",
   "event IntentForwardedWithData(address indexed user,address indexed target,bytes data,uint256 nonce,uint256 timestamp)",
@@ -53,38 +55,27 @@ function saveJson(file: string, value: unknown) {
   fs.writeFileSync(temporary, JSON.stringify(value, null, 2));
   fs.renameSync(temporary, file);
 }
-async function redisSave(key: string, value: unknown) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return;
-  try {
-    await fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(["SET", key, JSON.stringify(value)]),
-    });
-  } catch { /* Redis unavailable — local file is the source of truth */ }
-}
-async function redisGetQueue(): Promise<{ sourceChainId: number; txHash: string }[]> {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return [];
-  try {
-    const res = await fetch(`${url}/keys/intent-queue:*`, { headers: { Authorization: `Bearer ${token}` } });
-    const json = await res.json() as { result?: string[] };
-    if (!json.result?.length) return [];
-    const items = await Promise.all(json.result.map(async (k) => {
-      const r = await fetch(`${url}/getdel/${k}`, { headers: { Authorization: `Bearer ${token}` } });
-      const j = await r.json() as { result?: string | null };
-      return j.result ? JSON.parse(j.result) as { sourceChainId: number; txHash: string } : null;
-    }));
-    return items.filter(Boolean) as { sourceChainId: number; txHash: string }[];
-  } catch { return []; }
+async function redisGetQueue(): Promise<{ sourceChainId: number; txHash: string; redisKey: string }[]> {
+  if (!redisConfigured()) return [];
+  const keys = await redisCommand(["KEYS", "intent-queue:*"]);
+  if (!Array.isArray(keys) || !keys.every((key) => typeof key === "string")) throw new RedisError("Invalid Redis queue keys");
+  const items = [];
+  for (const redisKey of keys) {
+    const item = await redisGet(redisKey);
+    if (item === null) continue;
+    if (!item || typeof item !== "object" || !("sourceChainId" in item) ||
+        typeof item.sourceChainId !== "number" || !("txHash" in item) ||
+        typeof item.txHash !== "string" || !/^0x[a-fA-F0-9]{64}$/.test(item.txHash)) {
+      throw new RedisError(`Invalid queue item ${redisKey}`);
+    }
+    items.push({ sourceChainId: item.sourceChainId, txHash: item.txHash, redisKey });
+  }
+  return items;
 }
 function key(intent: Pick<Intent, "sourceChainId" | "txHash">) { return `${intent.sourceChainId}:${intent.txHash.toLowerCase()}`; }
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }
 
-class ArcRelayer {
+export class ArcRelayer {
   private arc: ethers.JsonRpcProvider;
   private signer: ethers.Wallet;
   private executor: ethers.Contract;
@@ -119,6 +110,9 @@ class ArcRelayer {
   }
 
   async start() {
+    // A configured shared store is authoritative. Never replay local seed history
+    // when Redis cannot be read after a Railway restart.
+    await this.restoreState();
     const arcNetwork = await this.arc.getNetwork();
     if (Number(arcNetwork.chainId) !== 5042002) throw new Error("Arc RPC has the wrong chain ID");
     if (await this.arc.getCode(await this.executor.getAddress()) === "0x") throw new Error("ArcExecutor contract is missing");
@@ -139,21 +133,85 @@ class ArcRelayer {
         }
       }
       const latest = await source.provider.getBlockNumber();
-      if (source.cursor < 0 || latest - source.cursor > 100000) {
-        console.warn(`${source.name}: historical gap is too large for startup. Scanning the latest 5000 blocks; use a START_BLOCK setting for deliberate full backfill. New app submissions also enter the direct queue.`);
+      if (source.cursor < 0) {
+        console.warn(`${source.name}: no saved cursor or START_BLOCK. Scanning the latest 5000 blocks. New app submissions also enter the direct queue.`);
         source.cursor = Math.max(0, latest - 5000);
       }
       console.log(`${source.name}: gateway ${source.gateway}, resume after block ${source.cursor}`);
     }
-    while (true) {
-      try { await this.pollQueued(); } catch (error) { console.error("Direct queue polling failed:", errorMessage(error)); }
-      for (const source of this.sources) {
-        try { await this.poll(source); } catch (error) { console.error(`${source.name} polling failed:`, errorMessage(error)); }
+    await this.publishHealth();
+    // Keep the heartbeat independent of long backfills and transaction receipts.
+    let publishingHealth = false;
+    const heartbeat = setInterval(() => {
+      if (publishingHealth) return;
+      publishingHealth = true;
+      void this.publishHealth().catch((error) => console.error("Heartbeat failed:", errorMessage(error)))
+        .finally(() => { publishingHealth = false; });
+    }, 5000);
+    try {
+      while (true) {
+        try { await this.pollQueued(); } catch (error) {
+          if (error instanceof RedisError) throw error;
+          console.error("Direct queue polling failed:", errorMessage(error));
+        }
+        // Resolve submissions whose receipt was unavailable in an earlier cycle,
+        // even if the source checkpoint has already moved past their event.
+        for (const intent of this.history.filter((item) => item.status === "executing" && item.executionHash)) {
+          try {
+            const receipt = await this.arc.getTransactionReceipt(intent.executionHash!);
+            if (receipt) await this.finishFromReceipt(intent, receipt);
+          } catch (error) {
+            if (error instanceof RedisError) throw error;
+            console.error(`Arc receipt lookup failed for ${intent.txHash}:`, errorMessage(error));
+          }
+        }
+        for (const source of this.sources) {
+          try { await this.poll(source); } catch (error) {
+            if (error instanceof RedisError) throw error;
+            source.lastPolledAt = 0;
+            console.error(`${source.name} polling failed:`, errorMessage(error));
+          }
+        }
+        await new Promise((resolve) => setTimeout(resolve, this.interval));
       }
-      saveJson(healthPath, { updatedAt: Date.now(), sources: this.sources.map((source) => source.chainId), relayer: this.signer.address });
-      redisSave("relayer-health", { updatedAt: Date.now(), sources: this.sources.map((source) => source.chainId), relayer: this.signer.address }).catch(() => {});
-      await new Promise((resolve) => setTimeout(resolve, this.interval));
+    } finally {
+      clearInterval(heartbeat);
     }
+  }
+
+  private async restoreState() {
+    if (!redisConfigured()) return;
+    const history = await redisGet("intent-history");
+    const checkpoints = await redisGet("relayer-checkpoints");
+    if (history !== null) {
+      if (!Array.isArray(history) || !history.every((item) => item && typeof item.txHash === "string" &&
+          Number.isInteger(item.sourceChainId) && ["detected", "executing", "completed", "failed"].includes(item.status))) {
+        throw new RedisError("Invalid durable intent history; refusing to replay source events");
+      }
+      this.history = history;
+    }
+    if (checkpoints !== null) {
+      if (!checkpoints || typeof checkpoints !== "object" || Array.isArray(checkpoints) ||
+          !Object.values(checkpoints).every((value) => Number.isInteger(value) && Number(value) >= 0)) {
+        throw new RedisError("Invalid durable relayer checkpoints");
+      }
+      // A checkpoint without its history could hide completed or pending work.
+      if (history === null) throw new RedisError("Redis checkpoints exist without intent history; reconcile state before restarting");
+      this.checkpoints = checkpoints as Record<string, number>;
+    }
+    await redisSave("intent-history", this.history);
+    console.log(`Restored ${this.history.length} intent(s) from shared state`);
+  }
+
+  private async publishHealth() {
+    const now = Date.now();
+    const health = {
+      updatedAt: now,
+      sources: this.sources.filter((source) => source.lastPolledAt && now - source.lastPolledAt < 30000).map((source) => source.chainId),
+      relayer: this.signer.address,
+    };
+    saveJson(healthPath, health);
+    await redisSave("relayer-health", health);
   }
 
   private async pollQueued() {
@@ -163,7 +221,8 @@ class ArcRelayer {
       const source = this.sources.find((candidate) => candidate.chainId === item.sourceChainId);
       if (!source) continue;
       const receipt = await source.provider.getTransactionReceipt(item.txHash);
-      if (!receipt || receipt.status !== 1) continue;
+      if (!receipt) continue;
+      if (receipt.status !== 1) { await redisCommand(["DEL", item.redisKey]); continue; }
       const parsed = receipt.logs.filter((log) => log.address.toLowerCase() === source.gateway.toLowerCase()).map((log) => {
         try { return { log, event: source.contract.interface.parseLog(log) }; } catch { return null; }
       }).find((entry) => entry?.event?.name === "IntentForwarded" || entry?.event?.name === "IntentForwardedWithData");
@@ -171,6 +230,8 @@ class ArcRelayer {
         const event = { args: parsed.event.args, transactionHash: item.txHash } as unknown as EventLog;
         await this.handle(source, event, parsed.event.name === "IntentForwardedWithData");
       }
+      // Acknowledge only after handling, so RPC failures do not lose submissions.
+      await redisCommand(["DEL", item.redisKey]);
     }
     // Poll local filesystem queue
     if (!fs.existsSync(queuePath)) return;
@@ -195,7 +256,10 @@ class ArcRelayer {
 
   private async poll(source: Source) {
     const latest = await source.provider.getBlockNumber();
-    while (source.cursor < latest) {
+    if (source.cursor >= latest) source.lastPolledAt = Date.now();
+    // Give each source and the direct queue a turn while catching up.
+    let chunks = 0;
+    while (source.cursor < latest && chunks++ < 5) {
       const from = source.cursor + 1;
       const chunkSize = source.chainId === 10143 ? 99 : source.chainId === 84532 ? 49 : 499;
       const to = Math.min(from + chunkSize, latest);
@@ -203,22 +267,24 @@ class ArcRelayer {
         source.contract.queryFilter(source.contract.filters.IntentForwarded(), from, to),
         source.contract.queryFilter(source.contract.filters.IntentForwardedWithData(), from, to),
       ]);
+      source.lastPolledAt = Date.now();
       const events = [...basic.map((event) => ({ event, hasData: false })), ...withData.map((event) => ({ event, hasData: true }))].sort((a, b) => a.event.blockNumber - b.event.blockNumber || a.event.index - b.event.index);
       for (const { event, hasData } of events) await this.handle(source, event as EventLog, hasData);
       source.cursor = to;
       this.checkpoints[String(source.chainId)] = to;
       saveJson(checkpointPath, this.checkpoints);
+      await redisSave("relayer-checkpoints", this.checkpoints);
       if (source.chainId === 84532) await new Promise((r) => setTimeout(r, 300));
     }
   }
 
-  private upsert(intent: Intent) {
+  private async upsert(intent: Intent) {
     const index = this.history.findIndex((item) => key(item) === key(intent));
     if (index >= 0) this.history[index] = { ...this.history[index], ...intent };
     else this.history.push(intent);
     this.history.sort((a, b) => b.timestamp - a.timestamp);
     saveJson(historyPath, this.history);
-    redisSave("intent-history", this.history).catch(() => {});
+    await redisSave("intent-history", this.history);
   }
 
   // Circle Paymaster: if PAYMASTER_URL is configured, sponsor gas for Arc execution
@@ -252,11 +318,19 @@ class ArcRelayer {
     if (existing?.status === "completed" || existing?.status === "failed") return;
     if (existing?.executionHash) {
       const receipt = await this.arc.getTransactionReceipt(existing.executionHash);
-      if (receipt) { this.finishFromReceipt(existing, receipt); return; }
+      if (receipt) { await this.finishFromReceipt(existing, receipt); return; }
       return; // A submitted Arc transaction may still be pending; never submit twice.
     }
+    if (existing?.status === "executing") {
+      // A crash may have occurred after broadcast but before saving the hash.
+      // The current executor cannot deduplicate a source intent on-chain.
+      existing.status = "failed";
+      existing.error = "Interrupted execution without a saved Arc hash; reconcile on Arc before retrying";
+      await this.upsert(existing);
+      return;
+    }
     const intent: Intent = existing || { txHash: event.transactionHash, user, target, nonce, timestamp, sourceChainId: source.chainId, status: "detected" };
-    this.upsert(intent);
+    await this.upsert(intent);
     try {
       const isTodo = target.toLowerCase() === this.todo.toLowerCase();
       const isVault = Boolean(this.vault) && target.toLowerCase() === this.vault.toLowerCase();
@@ -282,25 +356,26 @@ class ArcRelayer {
         intent.action = allowed[parsed.name as keyof typeof allowed];
       }
       intent.status = "executing";
-      this.upsert(intent);
+      await this.upsert(intent);
       const overrides = await this.buildOverrides(isVault);
       const tx = withData
         ? await this.executor.executeWithData(user, target, data, overrides)
         : await this.executor.execute(user, target);
       intent.executionHash = tx.hash;
-      this.upsert(intent);
+      await this.upsert(intent);
       const receipt = await tx.wait();
       if (!receipt) throw new Error("Arc receipt unavailable");
-      this.finishFromReceipt(intent, receipt);
+      await this.finishFromReceipt(intent, receipt);
     } catch (error) {
-      intent.status = "failed";
+      if (error instanceof RedisError) throw error;
+      intent.status = intent.executionHash ? "executing" : "failed";
       intent.error = errorMessage(error);
-      this.upsert(intent);
+      await this.upsert(intent);
       console.error(`${source.name} intent ${intent.txHash} failed: ${intent.error}`);
     }
   }
 
-  private finishFromReceipt(intent: Intent, receipt: ethers.TransactionReceipt) {
+  private async finishFromReceipt(intent: Intent, receipt: ethers.TransactionReceipt) {
     const executorAddress = String(this.executor.target).toLowerCase();
     const outcome = receipt.logs.filter((log) => log.address.toLowerCase() === executorAddress).map((log) => {
       try { return this.executor.interface.parseLog(log); } catch { return null; }
@@ -309,9 +384,15 @@ class ArcRelayer {
     intent.status = success ? "completed" : "failed";
     intent.executionHash = receipt.hash;
     if (!success) intent.error = "ArcExecutor emitted an unsuccessful execution";
-    this.upsert(intent);
+    else delete intent.error;
+    await this.upsert(intent);
     console.log(`${intent.status}: ${intent.sourceChainId}:${intent.txHash} -> ${receipt.hash}`);
   }
 }
 
-new ArcRelayer().start().catch((error) => { console.error("Relayer stopped:", errorMessage(error)); process.exitCode = 1; });
+if (require.main === module) {
+  new ArcRelayer().start().catch((error) => {
+    console.error("Relayer stopped:", errorMessage(error));
+    process.exit(1);
+  });
+}

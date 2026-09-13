@@ -5,6 +5,7 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
+    "test:relayer": "ts-node relayer/relayer.test.ts",
     "deploy:arc": "hardhat run scripts/deploy-arc.ts --network arcTestnet",
     "deploy:vault": "hardhat run scripts/deploy-vault.ts --network arcTestnet",
     "deploy:gateway": "hardhat run scripts/deploy-gateway.ts --network somniaTestnet",

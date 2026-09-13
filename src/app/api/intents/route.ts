@@ -3,33 +3,19 @@ import { join } from "node:path";
 import { createPublicClient, decodeEventLog, http } from "viem";
 import { getSourceNetwork } from "@/config/sourceChains";
 import { ARC_GATEWAY_ABI } from "@/lib/contracts";
+import { decodeStoredJson, redisConfigured, redisGet, redisSave } from "../../../../web3-hardhat-intent/relayer/redis";
 
 export const dynamic = "force-dynamic";
 
-async function redisGet(key: string): Promise<unknown | null> {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  const res = await fetch(`${url}/get/${key}`, { headers: { Authorization: `Bearer ${token}` } });
-  const json = await res.json() as { result?: string | null };
-  return json.result ? JSON.parse(json.result) : null;
-}
-
-async function redisSet(key: string, value: unknown) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return;
-  await fetch(`${url}/set/${key}`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(JSON.stringify(value)) });
-}
-
 export async function GET() {
   try {
-    const redis = await redisGet("intent-history");
-    if (redis) return Response.json(redis, { headers: { "Cache-Control": "no-store" } });
-    const content = await readFile(join(process.cwd(), "public", "intent-history.json"), "utf8");
-    return Response.json(JSON.parse(content), { headers: { "Cache-Control": "no-store" } });
+    const history = redisConfigured()
+      ? await redisGet("intent-history")
+      : decodeStoredJson(await readFile(join(process.cwd(), "public", "intent-history.json"), "utf8"));
+    if (!Array.isArray(history)) throw new Error("Invalid intent history");
+    return Response.json(history, { headers: { "Cache-Control": "no-store" } });
   } catch {
-    return Response.json([], { headers: { "Cache-Control": "no-store" } });
+    return Response.json([], { status: 503, headers: { "Cache-Control": "no-store" } });
   }
 }
 
@@ -54,13 +40,17 @@ export async function POST(request: Request) {
     if (!matchesGateway || !hasIntentEvent) return Response.json({ error: "Transaction did not emit a configured gateway intent" }, { status: 400 });
   } catch { return Response.json({ error: "Source transaction is not confirmed yet" }, { status: 409 }); }
   try {
-    const directory = join(process.cwd(), "public", "intent-queue");
-    await mkdir(directory, { recursive: true });
-    await writeFile(join(directory, `${sourceChainId}-${txHash.toLowerCase()}.json`), JSON.stringify({ sourceChainId, txHash }), { flag: "wx" });
+    if (redisConfigured()) {
+      await redisSave(`intent-queue:${sourceChainId}:${txHash.toLowerCase()}`, { sourceChainId, txHash });
+    } else {
+      if (process.env.VERCEL) throw new Error("Configure Redis for the hosted intent queue");
+      const directory = join(process.cwd(), "public", "intent-queue");
+      await mkdir(directory, { recursive: true });
+      await writeFile(join(directory, `${sourceChainId}-${txHash.toLowerCase()}.json`), JSON.stringify({ sourceChainId, txHash }), { flag: "wx" });
+    }
   } catch (error) {
-    // On Vercel/read-only filesystems fall back to Redis queue
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
-      await redisSet(`intent-queue:${sourceChainId}:${txHash.toLowerCase()}`, { sourceChainId, txHash });
+      return Response.json({ error: "Intent queue unavailable; the relayer can still discover the source transaction through logs" }, { status: 503 });
     }
   }
   return Response.json({ queued: true }, { status: 202 });
